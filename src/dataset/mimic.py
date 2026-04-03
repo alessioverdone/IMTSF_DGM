@@ -213,3 +213,6 @@ def collate_GOB(batch):
     res['times_val'] = times_val
     return res
 
+if __name__ == '__main__':
+    torch.manual_seed(1991)
+    dataset = MIMIC('../data/mimic')

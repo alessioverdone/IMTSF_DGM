@@ -59,7 +59,7 @@ class Training:
                                          batch_dict["observed_mask"])
             return {'pred_y':pred_y}
 
-        elif self.args.model == 'prova':
+        elif self.args.model == 'grape':
             return self.model(batch_dict["tp_to_predict"],
                               batch_dict["observed_data"],
                               batch_dict["observed_tp"],
@@ -77,6 +77,18 @@ class Training:
                                                               factor=0.8)
 
     def training_step(self, train_batch):
+        # STEP PER ELIMINARE SAMPLE CON MASK.SUM() == 0
+        # if (train_batch['observed_mask'].sum(dim=(1, 2)) == 0).any():
+        #     # print(f'Numero elementi corrotti: {(batch_dict["observed_mask"].sum(dim=(1,2)) == 0).sum()}')
+        #     no_corrupted_id = torch.where(train_batch['observed_mask'].sum(dim=(1, 2)) != 0)
+        #     train_batch["tp_to_predict"] = train_batch["tp_to_predict"][no_corrupted_id]
+        #     train_batch["data_to_predict"] = train_batch["data_to_predict"][no_corrupted_id]
+        #     train_batch["mask_predicted_data"] = train_batch["mask_predicted_data"][no_corrupted_id]
+        #     train_batch["observed_tp"] = train_batch["observed_tp"][no_corrupted_id]
+        #     train_batch["observed_data"] = train_batch["observed_data"][no_corrupted_id]
+        #     train_batch["observed_mask"] = train_batch["observed_mask"][no_corrupted_id]
+            # print('Hey!')
+
         self.optimizer.zero_grad()
         res_forward= self.forward(train_batch)
 
@@ -89,13 +101,13 @@ class Training:
             if results['graph_loss'] is not None:
                 results['graph_loss'].backward()
 
-        elif self.args.model == 'hi-patch' or self.args.model == 'prova':
+        elif self.args.model == 'hi-patch' or self.args.model == 'grape':
             results = self.compute_metrics_and_losses(train_batch,
                                                       res_forward,
                                                      'train')
             results["train_loss"].backward(retain_graph=False)
-            if 'graph_loss' in results.keys():
-                results['graph_loss'].backward()
+            if 'train_graph_loss' in results.keys():
+                results['train_graph_loss'].backward()
 
         else:
             raise Exception("model must be either 'hi-patch' or 'dgm'")
@@ -105,6 +117,8 @@ class Training:
         # Update lr
         results['learning_rate'] = self.optimizer.param_groups[0]['lr']
         results["train_loss"] = results["train_loss"].detach().cpu().float()
+        if 'train_graph_loss' in results.keys():
+            results["train_graph_loss"] = results["train_graph_loss"].detach().cpu().float()
         return results
 
     # def compute_losses_dgm(self, y_predicted, y, logprobs=None):
@@ -165,20 +179,19 @@ class Training:
             mae = compute_error(batch["data_to_predict"],
                                 res_forward['pred_y'],
                                 mask=batch["mask_predicted_data"],
-                                func="MAE", reduce="mean")
+                                func="MAE",
+                                reduce="mean")
 
         # DGM part
         if 'l_probs' in res_forward.keys():
             logprobs = res_forward['l_probs']
-            corr_pred_ = compute_error(batch["data_to_predict"],
-                                       res_forward['pred_y'],
-                                       mask=batch["mask_predicted_data"],
-                                       func="MSE",
-                                       reduce="mean").detach()
-            corr_pred = torch.reshape(corr_pred_, (-1, self.args.ndim , corr_pred_.shape[1]))
-            corr_pred = torch.mean(corr_pred, dim=0)
-            corr_pred = torch.mean(corr_pred, dim=1)
-            corr_pred = torch.unsqueeze(corr_pred, dim=0)
+            # corr_pred_ = compute_error(batch["data_to_predict"],
+            #                            res_forward['pred_y'],
+            #                            mask=batch["mask_predicted_data"],
+            #                            func="MSE",
+            #                            reduce="none").detach()
+            corr_pred_ = F.mse_loss(res_forward['pred_y'].squeeze(), batch["data_to_predict"], reduction='none').detach()
+            corr_pred = torch.sum(corr_pred_, dim=[0,1]).unsqueeze(0)
 
             if self.avg_accuracy is None:
                 self.avg_accuracy = torch.ones_like(corr_pred) * compute_error(batch["data_to_predict"],
@@ -195,6 +208,7 @@ class Training:
             graph_loss = point_w.squeeze(0) * logprobs_
             graph_loss = graph_loss.mean()
             results[f'{set_}_graph_loss'] = graph_loss
+            # results[f'{set_}_graph_mse'] = graph_loss.item()
 
             # Update moving average
             self.avg_accuracy = (self.avg_accuracy.to(corr_pred.device) * 0.95 + 0.05 * corr_pred)
@@ -207,23 +221,61 @@ class Training:
         return results
 
     def validation_step(self, val_batch):
+        # STEP PER ELIMINARE SAMPLE CON MASK.SUM() == 0
+        # if (val_batch['observed_mask'].sum(dim=(1, 2)) == 0).any():
+        #     # print(f'Numero elementi corrotti: {(batch_dict["observed_mask"].sum(dim=(1,2)) == 0).sum()}')
+        #     no_corrupted_id = torch.where(val_batch['observed_mask'].sum(dim=(1, 2)) != 0)
+        #     val_batch["tp_to_predict"] = val_batch["tp_to_predict"][no_corrupted_id]
+        #     val_batch["data_to_predict"] = val_batch["data_to_predict"][no_corrupted_id]
+        #     val_batch["mask_predicted_data"] = val_batch["mask_predicted_data"][no_corrupted_id]
+        #     val_batch["observed_tp"] = val_batch["observed_tp"][no_corrupted_id]
+        #     val_batch["observed_data"] = val_batch["observed_data"][no_corrupted_id]
+        #     val_batch["observed_mask"] = val_batch["observed_mask"][no_corrupted_id]
+
+        # if 0 in val_batch['tp_to_predict'].shape:
+        #     # print(f'Numero elementi corrotti: {(batch_dict["observed_mask"].sum(dim=(1,2)) == 0).sum()}')
+        #     no_corrupted_id = torch.where(val_batch['observed_mask'].sum(dim=(1, 2)) != 0)
+        #     val_batch["tp_to_predict"] = val_batch["tp_to_predict"][no_corrupted_id]
+        #     val_batch["data_to_predict"] = val_batch["data_to_predict"][no_corrupted_id]
+        #     val_batch["mask_predicted_data"] = val_batch["mask_predicted_data"][no_corrupted_id]
+        #     val_batch["observed_tp"] = val_batch["observed_tp"][no_corrupted_id]
+        #     val_batch["observed_data"] = val_batch["observed_data"][no_corrupted_id]
+        #     val_batch["observed_mask"] = val_batch["observed_mask"][no_corrupted_id]
+            # print('Hey!')
+
         res_forward = self.forward(val_batch)
+
 
         # Compute metrics
         if 'dgm' in self.args.model:
             results = self.compute_losses_dgm(res_forward['pred_y'],
                                               val_batch['y'],
                                               res_forward['logprobs'])
-        elif self.args.model == 'hi-patch' or self.args.model == 'prova':
+        elif self.args.model == 'hi-patch' or self.args.model == 'grape':
             results = self.compute_metrics_and_losses(val_batch,
                                                       res_forward,
                                                       'val')
             results["val_loss"] = results["val_loss"].detach().cpu().float()
+            if 'val_graph_loss' in results.keys():
+                results["val_graph_loss"] = results["val_graph_loss"].detach().cpu().float()
+
         else:
             raise Exception("model must be either 'hi-patch' or 'dgm'")
         return results
 
     def test_step(self, test_batch,):
+        # STEP PER ELIMINARE SAMPLE CON MASK.SUM() == 0
+        # if (test_batch['observed_mask'].sum(dim=(1, 2)) == 0).any():
+        #     # print(f'Numero elementi corrotti: {(batch_dict["observed_mask"].sum(dim=(1,2)) == 0).sum()}')
+        #     no_corrupted_id = torch.where(test_batch['observed_mask'].sum(dim=(1, 2)) != 0)
+        #     test_batch["tp_to_predict"] = test_batch["tp_to_predict"][no_corrupted_id]
+        #     test_batch["data_to_predict"] = test_batch["data_to_predict"][no_corrupted_id]
+        #     test_batch["mask_predicted_data"] = test_batch["mask_predicted_data"][no_corrupted_id]
+        #     test_batch["observed_tp"] = test_batch["observed_tp"][no_corrupted_id]
+        #     test_batch["observed_data"] = test_batch["observed_data"][no_corrupted_id]
+        #     test_batch["observed_mask"] = test_batch["observed_mask"][no_corrupted_id]
+            # print('Hey!')
+
         res_forward = self.forward(test_batch)
 
         # Compute losses and optimize DGM
@@ -231,11 +283,13 @@ class Training:
             results = self.compute_losses_dgm(res_forward['pred_y'],
                                               test_batch['y'],
                                               res_forward['logprobs'])
-        elif self.args.model == 'hi-patch' or self.args.model == 'prova':
+        elif self.args.model == 'hi-patch' or self.args.model == 'grape':
             results = self.compute_metrics_and_losses(test_batch,
                                                       res_forward,
                                                       'test')
             results["test_loss"] = results["test_loss"].detach().cpu().float()
+            if 'test_graph_loss' in results.keys():
+                results["test_graph_loss"] = results["test_graph_loss"].detach().cpu().float()
         else:
             raise Exception("model must be either 'hi-patch' or 'dgm'")
         return results

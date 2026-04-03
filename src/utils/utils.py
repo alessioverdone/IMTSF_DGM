@@ -1,3 +1,5 @@
+import os
+
 import torch
 import math
 
@@ -5,8 +7,7 @@ from src.layers.dgm import DGM_module
 from src.layers.hipatch import Hi_Patch
 from src.dataset.parse_datasets import parse_datasets
 from src.layers.moe import MixtureOfExpertsDGM
-from src.layers.prova import Prova
-from src.scripts.train_forecasting import layer_of_patches
+from src.layers.grape import Grape
 
 
 def get_model(hparams):
@@ -23,8 +24,8 @@ def get_model(hparams):
                                        hidden=hparams.emb_dim)
     elif hparams.model == 'hi-patch':
         model = Hi_Patch(hparams)
-    elif hparams.model == 'prova':
-        model = Prova(hparams)
+    elif hparams.model == 'grape':
+        model = Grape(hparams)
     else:
         raise Exception('Error in select the model!')
 
@@ -53,13 +54,15 @@ def set_params_wrt_dataset(run_params, dataModuleInstance):
         run_params.edge_index  = dataModuleInstance.torch_dataset.edge_index  # TODO: Con PV o Wind dà errore!
 
     ### Model setting Hi-Patch ###
-    elif run_params.model == 'hi-patch' or run_params.model == 'prova':
+    elif run_params.model == 'hi-patch' or run_params.model == 'grape':
+        # Hi-patch/grape parameters
         run_params.ndim = dataModuleInstance["input_dim"]
         run_params.npatch = int(math.ceil((run_params.history - run_params.patch_size) / run_params.stride)) + 1
         run_params.patch_layer = layer_of_patches(run_params.npatch)
         run_params.scale_patch_size = run_params.patch_size / (run_params.history + run_params.pred_window)
         run_params.task = 'forecasting'
 
+        # DGM params update
         run_params.dgm_layers[0][0] = run_params.hid_dim
         run_params.conv_layers[0][0] = run_params.hid_dim
         run_params.pre_fc[0] = run_params.hid_dim
@@ -67,7 +70,7 @@ def set_params_wrt_dataset(run_params, dataModuleInstance):
 
 
     else:
-        raise ValueError('Define model name correctly!')  # TODO: Ripartire da qui!
+        raise ValueError('Define model name correctly!')
 
     return run_params
 
@@ -81,6 +84,15 @@ def set_params_wrt_dataset(run_params, dataModuleInstance):
 #     pre_fc = [-1, emb_dim]
 #     return conv_layers, dgm_layers, fc_layers, pre_fc
 
+# Recursive function to determine patch layers
+def layer_of_patches(n_patch):
+    if n_patch == 1:
+        return 1
+    if n_patch % 2 == 0:
+        return 1 + layer_of_patches(n_patch / 2)
+    else:
+        return layer_of_patches(n_patch + 1)
+
 
 def make_dgm_network_parameters_v2(emb_dim):
     pre_fc = [-1, emb_dim]
@@ -93,7 +105,10 @@ def make_dgm_network_parameters_v2(emb_dim):
     return conv_layers, dgm_layers, fc_layers, pre_fc
 
 
-def initialize_parameters(cont, run_combination):
+def initialize_parameters_old(cont, run_combination):
+
+
+
     model_item = run_combination[0]
     dataset_name_item = run_combination[1]
     emb_dim_item = run_combination[2]
@@ -158,48 +173,64 @@ def initialize_parameters(cont, run_combination):
     return grid_params_dict
 
 
-def update_current_configuration(run_combination, seed, run_params, reproducible, save_ckpts, save_logs,
-                                 early_stop_callback_flag):
-    model_item = run_combination[0]
-    dataset_name_item = run_combination[1]
-    emb_dim_item = run_combination[2]
-    k_item = run_combination[3]
-    batch_size_item = run_combination[4]
-    lags_item = run_combination[5]
-    prediction_window_item = run_combination[6]
-    dropout_item = run_combination[7]
 
-    run_params.seed = seed
-    run_params.emb_dim = emb_dim_item
-    # conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters(emb_dim_item)
-    conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters_v2(emb_dim_item)
+def initialize_log_parameters(cont: int, combo: dict) -> dict:
+    METRICS = ['mse', 'rmse', 'mae']
+    SPLITS = ['val', 'test']
 
-    run_params.conv_layers = conv_layers
-    run_params.dgm_layers = dgm_layers
-    run_params.fc_layers = fc_layers
-    run_params.pre_fc = pre_fc
-    run_params.model = model_item
-    if 'dgm' in model_item:
-        ffun_item = model_item.split('_')[-2]
-        gfun_item = model_item.split('_')[-1]
-        run_params.ffun = ffun_item
-        run_params.gfun = gfun_item
+    # colonne metriche: val_mse_mean, val_mse_std, ...
+    metric_keys = [f'{split}_{metric}_{stat}'
+                   for split in SPLITS
+                   for metric in METRICS
+                   for stat in ('mean', 'std')]
 
-    run_params.k = k_item
-    run_params.batch_size = batch_size_item
-    run_params.lags = lags_item
-    run_params.prediction_window = prediction_window_item
+    grid_params = {'Run': cont, **combo, **{k: 0. for k in metric_keys}}
 
-    run_params.dataset_name = dataset_name_item
-    run_params.dataset = dataset_name_item
+    print(' '.join(f'{k}: {v}' for k, v in grid_params.items()))
+    return grid_params
 
-    run_params.chkpt_dir = "../checkpoints/" + dataset_name_item + '/'
-    run_params.reproducible = reproducible
-    run_params.save_ckpts = save_ckpts
-    run_params.early_stop_callback_flag = early_stop_callback_flag
-    run_params.save_logs = save_logs
-    run_params.dropout = dropout_item
-    return run_params
+# def update_current_configuration(run_combination, seed, run_params, reproducible, save_ckpts, save_logs,
+#                                  early_stop_callback_flag):
+#     model_item = run_combination[0]
+#     dataset_name_item = run_combination[1]
+#     emb_dim_item = run_combination[2]
+#     k_item = run_combination[3]
+#     batch_size_item = run_combination[4]
+#     lags_item = run_combination[5]
+#     prediction_window_item = run_combination[6]
+#     dropout_item = run_combination[7]
+#
+#     run_params.seed = seed
+#     run_params.emb_dim = emb_dim_item
+#     # conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters(emb_dim_item)
+#     conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters_v2(emb_dim_item)
+#
+#     run_params.conv_layers = conv_layers
+#     run_params.dgm_layers = dgm_layers
+#     run_params.fc_layers = fc_layers
+#     run_params.pre_fc = pre_fc
+#     run_params.model = model_item
+#     if 'dgm' in model_item:
+#         ffun_item = model_item.split('_')[-2]
+#         gfun_item = model_item.split('_')[-1]
+#         run_params.ffun = ffun_item
+#         run_params.gfun = gfun_item
+#
+#     run_params.k = k_item
+#     run_params.batch_size = batch_size_item
+#     run_params.lags = lags_item
+#     run_params.prediction_window = prediction_window_item
+#
+#     run_params.dataset_name = dataset_name_item
+#     run_params.dataset = dataset_name_item
+#
+#     run_params.chkpt_dir = "../checkpoints/" + dataset_name_item + '/'
+#     run_params.reproducible = reproducible
+#     run_params.save_ckpts = save_ckpts
+#     run_params.early_stop_callback_flag = early_stop_callback_flag
+#     run_params.save_logs = save_logs
+#     run_params.dropout = dropout_item
+#     return run_params
 
 
 def get_datamodule(run_params):
@@ -216,61 +247,82 @@ def get_datamodule(run_params):
 
 
 def update_seed_metrics(model, res_test, val_results, test_results):
-    best_val_mse, best_val_rmse, best_val_mae, best_val_mape = model.best_mse, model.best_rmse, model.best_mae, model.best_mape
+    best_val_mse, best_val_rmse, best_val_mae = model.best_mse, model.best_rmse, model.best_mae
 
     # Testing
     test_mse = res_test[0]['test_mse']
     test_rmse = res_test[0]['test_rmse']
     test_mae = res_test[0]['test_mae']
-    test_mape = res_test[0]['test_mape']
 
-    val_results.append([best_val_mse, best_val_rmse, best_val_mae, best_val_mape])
-    test_results.append([test_mse, test_rmse, test_mae, test_mape])
+    val_results.append([best_val_mse, best_val_rmse, best_val_mae])
+    test_results.append([test_mse, test_rmse, test_mae])
 
     print(f'best_val_mse: {best_val_mse}')
     print(f'best_val_rmse: {best_val_rmse}')
     print(f'best_val_mae: {best_val_mae}')
-    print(f'best_val_mape: {best_val_mape}')
     print(f'test_mse: {test_mse}')
     print(f'test_rmse {test_rmse}')
     print(f'test_mae: {test_mae}')
-    print(f'test_mape: {test_mape}')
     return val_results, test_results
 
 
-def update_run_metrics(val_results, test_results, grid_params_dict, run_params):
-    val_results = torch.tensor(val_results)
-    test_results = torch.tensor(test_results)
-    val_mse_over_seeds = val_results[:, 0]
-    val_rmse_over_seeds = val_results[:, 1]
-    val_mae_over_seeds = val_results[:, 2]
-    val_mape_over_seeds = val_results[:, 3]
 
-    test_mse_over_seeds = test_results[:, 0]
-    test_rmse_over_seeds = test_results[:, 1]
-    test_mae_over_seeds = test_results[:, 2]
-    test_mape_over_seeds = test_results[:, 3]
+def update_run_metrics(val_results,
+                       test_results,
+                       grid_params_dict,
+                       run_params):
+    metrics = ['mse', 'rmse', 'mae']
+    splits = ['val', 'test']
+    results = {'val':  torch.tensor(val_results),
+               'test': torch.tensor(test_results)}
 
-    grid_params_dict.update({
-        'val_mse_mean': float(torch.mean(val_mse_over_seeds)),
-        'val_mse_std': float(torch.std(val_mse_over_seeds)),
-        'val_rmse_mean': float(torch.mean(val_rmse_over_seeds)),
-        'val_rmse_std': float(torch.std(val_rmse_over_seeds)),
-        'val_mae_mean': float(torch.mean(val_mae_over_seeds)),
-        'val_mae_std': float(torch.std(val_mae_over_seeds)),
-        'val_mape_mean': float(torch.mean(val_mape_over_seeds)),
-        'val_mape_std': float(torch.std(val_mape_over_seeds)),
-        'test_mse_mean': float(torch.mean(test_mse_over_seeds)),
-        'test_mse_std': float(torch.std(test_mse_over_seeds)),
-        'test_rmse_mean': float(torch.mean(test_rmse_over_seeds)),
-        'test_rmse_std': float(torch.std(test_rmse_over_seeds)),
-        'test_mae_mean': float(torch.mean(test_mae_over_seeds)),
-        'test_mae_std': float(torch.std(test_mae_over_seeds)),
-        'test_mape_mean': float(torch.mean(test_mape_over_seeds)),
-        'test_mape_std': float(torch.std(test_mape_over_seeds))
-    })
-    output_string = ' '.join([f'{name}: {value}' for name, value in grid_params_dict.items()])
+    grid_params_dict.update({f'{split}_{metric}_{stat}': float(getattr(torch, stat)(results[split][:, i]))
+                            for split in splits
+                            for i, metric in enumerate(metrics)
+                            for stat in ('mean', 'std')})
+
+    print(' '.join(f'{k}: {v}' for k, v in grid_params_dict.items()))
+    output_string = ' '.join([f'{k}: {v}' for k, v in grid_params_dict.items()])
 
     if run_params.save_logs:
-        with open(f'../logs/logs_{run_params.dataset_name}_mean_std_{run_params.lags}_{run_params.prediction_window}_{run_params.dgm_mode}.txt', 'a') as file:
+        os.makedirs(run_params.logs_dir, exist_ok=True)
+        with open(os.path.join(run_params.logs_dir, 'log.txt'), 'a') as file:
             print(output_string, file=file)
+
+
+# def update_run_metrics_old(val_results, test_results, grid_params_dict, run_params):
+#     val_results = torch.tensor(val_results)
+#     test_results = torch.tensor(test_results)
+#     val_mse_over_seeds = val_results[:, 0]
+#     val_rmse_over_seeds = val_results[:, 1]
+#     val_mae_over_seeds = val_results[:, 2]
+#     val_mape_over_seeds = val_results[:, 3]
+#
+#     test_mse_over_seeds = test_results[:, 0]
+#     test_rmse_over_seeds = test_results[:, 1]
+#     test_mae_over_seeds = test_results[:, 2]
+#     test_mape_over_seeds = test_results[:, 3]
+#
+#     grid_params_dict.update({
+#         'val_mse_mean': float(torch.mean(val_mse_over_seeds)),
+#         'val_mse_std': float(torch.std(val_mse_over_seeds)),
+#         'val_rmse_mean': float(torch.mean(val_rmse_over_seeds)),
+#         'val_rmse_std': float(torch.std(val_rmse_over_seeds)),
+#         'val_mae_mean': float(torch.mean(val_mae_over_seeds)),
+#         'val_mae_std': float(torch.std(val_mae_over_seeds)),
+#         'val_mape_mean': float(torch.mean(val_mape_over_seeds)),
+#         'val_mape_std': float(torch.std(val_mape_over_seeds)),
+#         'test_mse_mean': float(torch.mean(test_mse_over_seeds)),
+#         'test_mse_std': float(torch.std(test_mse_over_seeds)),
+#         'test_rmse_mean': float(torch.mean(test_rmse_over_seeds)),
+#         'test_rmse_std': float(torch.std(test_rmse_over_seeds)),
+#         'test_mae_mean': float(torch.mean(test_mae_over_seeds)),
+#         'test_mae_std': float(torch.std(test_mae_over_seeds)),
+#         'test_mape_mean': float(torch.mean(test_mape_over_seeds)),
+#         'test_mape_std': float(torch.std(test_mape_over_seeds))
+#     })
+#     output_string = ' '.join([f'{name}: {value}' for name, value in grid_params_dict.items()])
+#
+#     if run_params.save_logs:
+#         with open(f'../logs/logs_{run_params.dataset_name}_mean_std_{run_params.lags}_{run_params.prediction_window}_{run_params.dgm_mode}.txt', 'a') as file:
+#             print(output_string, file=file)

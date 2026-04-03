@@ -39,9 +39,14 @@ def compute_error(truth, pred_y, mask, func, reduce, norm_dict=None):
 		raise Exception("Error function not specified")
 
 	# Sum error values along the time and batch dimensions, per variable
+	# error = torch.nan_to_num(error, nan=0.0)
 	error_var_sum = error.reshape(-1, n_dim).sum(dim=0)
+	# error_var_sum = error.reshape(-1, n_dim).sum(dim=0)  <------------------ era sum()
+
 	# Sum the corresponding mask values to count the valid entries
 	mask_count = mask.reshape(-1, n_dim).sum(dim=0)
+	# mask_count = mask.reshape(-1, n_dim).sum(dim=0)
+
 
 	# Return either mean or sum based on the 'reduce' argument
 	if(reduce == "mean"):
@@ -61,24 +66,31 @@ def compute_all_losses(model, batch_dict):
 		batch_dict["observed_data"], batch_dict["observed_tp"],
 		batch_dict["observed_mask"])
 
-	mse = compute_error(batch_dict["data_to_predict"], pred_y, mask = batch_dict["mask_predicted_data"], func="MSE", reduce="mean")
+	mse = compute_error(batch_dict["data_to_predict"],
+						pred_y,
+						mask=batch_dict["mask_predicted_data"],
+						func="MSE",
+						reduce="mean")
 	rmse = torch.sqrt(mse)
 
 	# Use MSE as the loss function
 	# OLD
 	# mae = compute_error(batch_dict["data_to_predict"], pred_y, mask = batch_dict["mask_predicted_data"], func="MAE", reduce="mean")
 	with torch.no_grad():  # mae non serve per backprop
-		mae = compute_error(batch_dict["data_to_predict"], pred_y, mask = batch_dict["mask_predicted_data"], func="MAE", reduce="mean")
+		mae = compute_error(batch_dict["data_to_predict"],
+							pred_y,
+							mask=batch_dict["mask_predicted_data"],
+							func="MAE",
+							reduce="mean")
 
-	################################
 	loss = mse
+
 	# Store the loss and error metrics
 	results = {}
 	results["loss"] = loss
 	results["mse"] = mse.item()
 	results["rmse"] = rmse.item()
 	results["mae"] = mae.item()
-
 	return results
 
 def evaluation(model, dataloader, n_batches, device):

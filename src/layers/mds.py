@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn import ModuleList
 from torch_geometric.nn import GCNConv, GATConv, EdgeConv
-from torch_geometric.utils import to_dense_adj
+from torch_geometric.utils import to_dense_adj, dense_to_sparse
 from knn_cuda import KNN
 
 from src.config import Parameters
@@ -138,6 +138,220 @@ class STS3M(nn.Module):
 class DGM_d(nn.Module):
     def __init__(self, embed_f, k=5, distance="euclidean", num_nodes=1, sparse=True, hparams=None):
         super(DGM_d, self).__init__()
+
+        self.sparse = sparse
+        self.temperature = nn.Parameter(torch.tensor(1. if distance == "hyperbolic" else 4.).float())
+        self.embed_f = embed_f
+        self.centroid = None
+        self.scale = None
+        self.k = k
+        self.distance = distance
+        self.num_of_nodes = 0
+        self.num_nodes = num_nodes
+        self.hparams = hparams
+        self.debug = False
+
+    def forward(self, x, edge_index=None, batch=None, fixedges=None):
+        # Preprocess
+        B, N, F = x.shape
+        if edge_index is not None:
+            x = self.embed_f(x.view(B * N, F), edge_index)
+        else:
+            adj = torch.ones(N, N) - torch.eye(N)
+            edge_index, _ = dense_to_sparse(adj)  # (2, N*(N-1))
+            x = self.embed_f(x.view(B * N, F), edge_index.cuda())
+        x = x.view(B,N,-1)
+
+        if self.training:
+            if fixedges is not None:
+                return x, fixedges, torch.zeros(fixedges.shape[0], fixedges.shape[-1] // self.k, self.k,
+                                                dtype=torch.float, device=x.device)
+            # sampling here
+            edges_hat, logprobs = self.sample_without_replacement(x)
+
+        else:
+            with torch.no_grad():
+                if fixedges is not None:
+                    return x, fixedges, torch.zeros(fixedges.shape[0], fixedges.shape[-1] // self.k, self.k,
+                                                    dtype=torch.float, device=x.device)
+                # sampling here
+                edges_hat, logprobs = self.sample_without_replacement(x)
+
+        if self.debug:
+            if self.distance == "euclidean":
+                D, _x = pairwise_euclidean_distances(x)
+            if self.distance == "hyperbolic":
+                D, _x = pairwise_poincare_distances(x)
+
+            self.D = (D * torch.exp(torch.clamp(self.temperature, -5, 5))).detach().cpu()
+            self.edges_hat = edges_hat.detach().cpu()
+            self.logprobs = logprobs.detach().cpu()
+            self.x = x
+
+        return x, edges_hat, logprobs, None
+
+
+    def sample_without_replacement_not_so_old(self, x):
+        x = torch.reshape(x[0,:,:], (-1, self.num_nodes, x.shape[2]))
+        #TODO: probabilmente dovrai fare un flatten da x=(b,n,t,f) a x=(b,n,f)
+        # x = x.mean(dim=2)
+        b, n, _ = x.shape
+
+        if self.distance == "euclidean":
+            G_i = x.clone().unsqueeze(2)
+            X_j = x.clone().unsqueeze(1)
+            mD = ((G_i - X_j) ** 2).sum(-1)
+
+            # argKmin already add gumbel noise
+            lq = mD * torch.exp(torch.clamp(self.temperature, -5, 5))
+
+            # batch-mode modification
+            lq = torch.sum(lq, dim=0)
+            knn = KNN(k=self.k, transpose_mode=True)
+            dist, indices = knn(lq.unsqueeze(0), lq.unsqueeze(0))
+            x1 = torch.gather(x, -2,
+                              indices.view(indices.unsqueeze(0).shape[0], -1)[..., None].repeat(1, 1, x.shape[-1]))
+            x2 = x[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x.shape[-1])
+            logprobs = (-(x1 - x2).pow(2).sum(-1) * torch.exp(torch.clamp(self.temperature, -5, 5))).reshape(x.shape[0],
+                                                                                                             -1, self.k)
+
+        if self.distance == "hyperbolic":
+            pass
+            x_norm = (x ** 2).sum(-1, keepdim=True)
+            x_norm = (x_norm.sqrt() - 1).relu() + 1
+            x = x / (x_norm * (1 + 1e-2))  # safe distance to the margin
+            x_norm = (x ** 2).sum(-1, keepdim=True)
+
+            G_i = torch.tensor(x[:, :, None, :])  # (M**2, 1, 2)
+            X_j = torch.tensor(x[:, None, :, :])  # (1, N, 2)
+
+            G_i2 = torch.tensor(1 - x_norm[:, :, None, :])  # (M**2, 1, 2)
+            X_j2 = torch.tensor(1 - x_norm[:, None, :, :])  # (1, N, 2)
+
+            pq = ((G_i - X_j) ** 2).sum(-1)
+            N = (G_i2 * X_j2)
+            XX = (1e-6 + 1 + 2 * pq / N)
+            mD = (XX + (XX ** 2 - 1).sqrt()).log() ** 2
+
+            lq = mD * torch.exp(torch.clamp(self.temperature, -5, 5))
+
+            indices = torch.argmin(lq, dim=1)[:, :self.k]  # lq.argKmin(self.k, dim=1)
+
+            x1 = torch.gather(x, -2, indices.view(indices.shape[0], -1)[..., None].repeat(1, 1, x.shape[-1]))
+            x2 = x[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x.shape[-1])
+
+            x1_n = torch.gather(x_norm, -2,
+                                indices.view(indices.shape[0], -1)[..., None].repeat(1, 1, x_norm.shape[-1]))
+            x2_n = x_norm[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x_norm.shape[-1])
+
+            pq = (x1 - x2).pow(2).sum(-1)
+            pqn = ((1 - x1_n) * (1 - x2_n)).sum(-1)
+            XX = 1e-6 + 1 + 2 * pq / pqn
+            dist = torch.log(XX + (XX ** 2 - 1).sqrt()) ** 2
+            logprobs = (-dist * torch.exp(torch.clamp(self.temperature, -5, 5))).reshape(x.shape[0], -1, self.k)
+
+            if self.debug:
+                self._x = x.detach().cpu() + 0
+
+        # rows = torch.arange(n).view(1, n, 1).to(x.device).repeat(b, 1, self.k)
+        # edges = torch.stack((indices.view(b, -1), rows.view(b, -1)), -2)
+
+        # Modifica per batches
+        single_batch_src = torch.arange(n).view(n, 1).repeat(1, self.k).view(-1).to('cuda')
+        single_batch_tfg = indices.view(-1).to('cuda')
+        single_batch_src = single_batch_src.repeat(b)
+        single_batch_tfg = single_batch_tfg.repeat(b)
+        tensor_to_adapt_idx_to_batch_size = torch.arange(b) * n
+        tensor_to_adapt_idx_to_batch_size = tensor_to_adapt_idx_to_batch_size.unsqueeze(-1).repeat(1, n*self.k).view(-1).to('cuda')
+        single_batch_src += tensor_to_adapt_idx_to_batch_size
+        single_batch_tfg += tensor_to_adapt_idx_to_batch_size
+        edges = torch.cat([single_batch_src.unsqueeze(0), single_batch_tfg.unsqueeze(0)], dim=0)
+        return edges, logprobs
+
+
+    def sample_without_replacement(self, x):
+
+        # x = torch.reshape(x[0,:,:], (-1, self.num_nodes, x.shape[2]))
+        #TODO: probabilmente dovrai fare un flatten da x=(b,n,t,f) a x=(b,n,f)
+
+        # x = x.mean(dim=2)
+        # TODO: ripartire da qui, prova con CLaude ad adattare DGM a più grafi con edge_index diversi
+        b, n, _ = x.shape
+
+        if self.distance == "euclidean":
+            G_i = x.clone().unsqueeze(2)
+            X_j = x.clone().unsqueeze(1)
+            mD = ((G_i - X_j) ** 2).sum(-1)
+
+            # argKmin already add gumbel noise
+            lq = mD * torch.exp(torch.clamp(self.temperature, -5, 5))
+
+            # batch-mode modification
+            lq = torch.sum(lq, dim=0)
+            knn = KNN(k=self.k, transpose_mode=True)
+            dist, indices = knn(lq.unsqueeze(0), lq.unsqueeze(0))
+            x1 = torch.gather(x, -2,
+                              indices.view(indices.unsqueeze(0).shape[0], -1)[..., None].repeat(1, 1, x.shape[-1]))
+            x2 = x[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x.shape[-1])
+            logprobs = (-(x1 - x2).pow(2).sum(-1) * torch.exp(torch.clamp(self.temperature, -5, 5))).reshape(x.shape[0],
+                                                                                                             -1, self.k)
+
+        if self.distance == "hyperbolic":
+            pass
+            x_norm = (x ** 2).sum(-1, keepdim=True)
+            x_norm = (x_norm.sqrt() - 1).relu() + 1
+            x = x / (x_norm * (1 + 1e-2))  # safe distance to the margin
+            x_norm = (x ** 2).sum(-1, keepdim=True)
+
+            G_i = torch.tensor(x[:, :, None, :])  # (M**2, 1, 2)
+            X_j = torch.tensor(x[:, None, :, :])  # (1, N, 2)
+
+            G_i2 = torch.tensor(1 - x_norm[:, :, None, :])  # (M**2, 1, 2)
+            X_j2 = torch.tensor(1 - x_norm[:, None, :, :])  # (1, N, 2)
+
+            pq = ((G_i - X_j) ** 2).sum(-1)
+            N = (G_i2 * X_j2)
+            XX = (1e-6 + 1 + 2 * pq / N)
+            mD = (XX + (XX ** 2 - 1).sqrt()).log() ** 2
+
+            lq = mD * torch.exp(torch.clamp(self.temperature, -5, 5))
+
+            indices = torch.argmin(lq, dim=1)[:, :self.k]  # lq.argKmin(self.k, dim=1)
+
+            x1 = torch.gather(x, -2, indices.view(indices.shape[0], -1)[..., None].repeat(1, 1, x.shape[-1]))
+            x2 = x[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x.shape[-1])
+
+            x1_n = torch.gather(x_norm, -2,
+                                indices.view(indices.shape[0], -1)[..., None].repeat(1, 1, x_norm.shape[-1]))
+            x2_n = x_norm[:, :, None, :].repeat(1, 1, self.k, 1).view(x.shape[0], -1, x_norm.shape[-1])
+
+            pq = (x1 - x2).pow(2).sum(-1)
+            pqn = ((1 - x1_n) * (1 - x2_n)).sum(-1)
+            XX = 1e-6 + 1 + 2 * pq / pqn
+            dist = torch.log(XX + (XX ** 2 - 1).sqrt()) ** 2
+            logprobs = (-dist * torch.exp(torch.clamp(self.temperature, -5, 5))).reshape(x.shape[0], -1, self.k)
+
+            if self.debug:
+                self._x = x.detach().cpu() + 0
+
+        # rows = torch.arange(n).view(1, n, 1).to(x.device).repeat(b, 1, self.k)
+        # edges = torch.stack((indices.view(b, -1), rows.view(b, -1)), -2)
+
+        # Modifica per batches
+        single_batch_src = torch.arange(n).view(n, 1).repeat(1, self.k).view(-1).to('cuda')
+        single_batch_tfg = indices.view(-1).to('cuda')
+        single_batch_src = single_batch_src.repeat(b)
+        single_batch_tfg = single_batch_tfg.repeat(b)
+        tensor_to_adapt_idx_to_batch_size = torch.arange(b) * n
+        tensor_to_adapt_idx_to_batch_size = tensor_to_adapt_idx_to_batch_size.unsqueeze(-1).repeat(1, n*self.k).view(-1).to('cuda')
+        single_batch_src += tensor_to_adapt_idx_to_batch_size
+        single_batch_tfg += tensor_to_adapt_idx_to_batch_size
+        edges = torch.cat([single_batch_src.unsqueeze(0), single_batch_tfg.unsqueeze(0)], dim=0)
+        return edges, logprobs
+
+class DGM_d_old(nn.Module):
+    def __init__(self, embed_f, k=5, distance="euclidean", num_nodes=1, sparse=True, hparams=None):
+        super(DGM_d_old, self).__init__()
 
         self.sparse = sparse
         self.temperature = nn.Parameter(torch.tensor(1. if distance == "hyperbolic" else 4.).float())
@@ -355,7 +569,7 @@ class DGM_d(nn.Module):
         return edges, logprobs
 
 class DGMmodule(nn.Module):
-    def __init__(self,hparams):
+    def __init__(self, hparams):
         super().__init__()
         conv_layers = hparams.conv_layers
         dgm_layers = hparams.dgm_layers
@@ -437,25 +651,27 @@ class DGMmodule(nn.Module):
             self.pre_fc = MLP(hparams.pre_fc, final_activation=True)
         self.fc = torch.nn.Linear(fc_layers[0], fc_layers[-1])
 
-    def forward(self,  x, edges=None, edges_weight=None):
+    def forward(self, x):
         # Preprocessing
         if self.hparams.pre_fc is not None and len(self.hparams.pre_fc) > 0:  # [B, N, F]
             x = self.pre_fc(x)
-
+        B, N, feat_dim = x.shape
         # Dual-step f and g
+        edges=None
         graph_x = x.detach()
         lprobslist = []
         for f, g in zip(self.graph_f, self.node_g):
             # Graph learning
             graph_x, edges, lprobs, edges_weight = f(graph_x, edges, None, None)
             edges = edges.detach()
-            if not isinstance(f, Identity):
-                graph_x = rearrange(graph_x, 'b n t d -> b t n d')
+            # if not isinstance(f, Identity):
+            #     graph_x = rearrange(graph_x, 'b n t d -> b t n d')
             # self.edges = edges
 
             # Diffusion
-            x = F.relu(g(torch.dropout(x, self.hparams.dropout, train=self.training), edges))
-            x = torch.reshape(x, (graph_x.shape[0], graph_x.shape[1], x.shape[1], x.shape[2]))
+            x = F.relu(g(torch.dropout(x.view(B*N,-1), self.hparams.dropout, train=self.training), edges))
+            x = x.view(B, N, -1)
+            # x = torch.reshape(x, (graph_x.shape[0], graph_x.shape[1], x.shape[1], x.shape[2]))
             graph_x = torch.cat([graph_x, x.detach()], -1)  # join x_f e x_g
             if lprobs is not None:
                 lprobslist.append(lprobs)

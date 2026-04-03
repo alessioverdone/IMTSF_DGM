@@ -385,10 +385,137 @@ def get_seq_length(args, records):
 	return max_input_len, max_pred_len, median_len
 
 
-
-def patch_variable_time_collate_fn(batch_, args, device = torch.device("cpu"), data_type = "train",
-	data_min = None, data_max = None, time_max = None):
+def patch_variable_time_collate_fn(batch_,
+                                   args,
+                                   device=torch.device("cpu"),
+                                   data_type="train",
+                                   data_min=None,
+                                   data_max=None,
+                                   time_max=None):
 	"""
+	Prende i timestep osservati di ogni sample e li impacchetta direttamente con padding legato al max_timestep: i valori
+	temporali non sono allineati.
+	Expects a batch of time series data in the form of (record_id, tt, vals, mask) where
+		- record_id is a patient id
+		- tt is a (T, ) tensor containing T time values of observations.
+		- vals is a (T, D) tensor containing observed values for D variables.
+		- mask is a (T, D) tensor containing 1 where values were observed and 0 otherwise.
+	Returns:
+	Data form as input:
+		batch_tt: (B, M, L_in, D) the batch contains a maximal L_in time values of observations among M patches.
+		batch_vals: (B, M, L_in, D) tensor containing the observed values.
+		batch_mask: (B, M, L_in, D) tensor containing 1 where values were observed and 0 otherwise.
+	Data form to predict:
+		flat_tt: (L_out) the batch contains a maximal L_out time values of observations.
+		flat_vals: (B, L_out, D) tensor containing the observed values.
+		flat_mask: (B, L_out, D) tensor containing 1 where values were observed and 0 otherwise.
+	"""
+	batch = list()
+	for sample in batch_:
+		elem_tuple = list()
+		for elem in sample:
+			if isinstance(elem, torch.Tensor):
+				elem_tuple.append(elem.to(device))
+			else:
+				elem_tuple.append(elem)
+		batch.append(tuple(elem_tuple))
+
+	D = batch[0][2].shape[1]
+	combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]), sorted=True, return_inverse=True)
+	n_observed_tp = torch.lt(combined_tt, args.history).sum()  	# the number of observed time points
+
+	offset = 0
+	combined_vals = torch.zeros([len(batch), len(combined_tt), D]).to(device)
+	combined_mask = torch.zeros([len(batch), len(combined_tt), D]).to(device)
+	predicted_tp = []
+	predicted_data = []
+	predicted_mask = []
+	for b, (record_id, tt, vals, mask) in enumerate(batch):
+		indices = inverse_indices[offset:offset + len(tt)]
+		offset += len(tt)
+		combined_vals[b, indices] = vals
+		combined_mask[b, indices] = mask
+
+		tmp_n_observed_tp = torch.lt(tt, args.history).sum()
+		predicted_tp.append(tt[tmp_n_observed_tp:])
+		predicted_data.append(vals[tmp_n_observed_tp:])
+		predicted_mask.append(mask[tmp_n_observed_tp:])
+
+	combined_tt = combined_tt[:n_observed_tp]
+	combined_vals = combined_vals[:, :n_observed_tp]
+	combined_mask = combined_mask[:, :n_observed_tp]
+	predicted_tp = pad_sequence(predicted_tp, batch_first=True)
+	predicted_data = pad_sequence(predicted_data, batch_first=True)
+	predicted_mask = pad_sequence(predicted_mask, batch_first=True)
+
+	if (args.dataset_name != 'ushcn'):
+		combined_vals = normalize_masked_data(combined_vals, combined_mask,
+		                                      att_min=data_min.to(device), att_max=data_max.to(device))
+		predicted_data = normalize_masked_data(predicted_data, predicted_mask,
+		                                       att_min=data_min.to(device), att_max=data_max.to(device))
+
+	combined_tt = normalize_masked_tp(combined_tt, att_min=0, att_max=time_max)
+	predicted_tp = normalize_masked_tp(predicted_tp, att_min=0, att_max=time_max)
+
+	data_dict = {
+		"data": combined_vals,  # (n_batch, T_o, D)
+		"time_steps": combined_tt,  # (T_o, )
+		"mask": combined_mask,  # (n_batch, T_o, D)
+		"data_to_predict": predicted_data,  # (n_batch, T, D)
+		"tp_to_predict": predicted_tp,  # (n_batch, T)
+		"mask_predicted_data": predicted_mask,  # (n_batch, T, D)
+	}
+
+
+	split_dict = {"tp_to_predict": data_dict["tp_to_predict"].clone(),
+	              "data_to_predict": data_dict["data_to_predict"].clone(),
+	              "mask_predicted_data": data_dict["mask_predicted_data"].clone()
+	              }
+
+	observed_tp = data_dict["time_steps"].clone()  # (n_observed_tp, )
+	observed_data = data_dict["data"].clone()  # (bs, n_observed_tp, D)
+	observed_mask = data_dict["mask"].clone()  # (bs, n_observed_tp, D)
+
+	n_batch, n_tp, n_dim = observed_data.shape
+	observed_tp_patches = observed_tp.view(1, -1, 1).repeat(n_batch, 1, n_dim)
+	observed_data_patches = observed_data
+	observed_mask_patches = observed_mask
+	max_patch_len = int(observed_mask.sum(dim=1).max().item())
+
+	patch_indices_final = torch.full((n_batch, max_patch_len, n_dim), n_tp).to(device)  # n_batch, npacth, max_patch_len, n_dim
+	aux_tensor = torch.arange(max_patch_len).view(1, max_patch_len, 1).repeat(n_batch, 1, n_dim).to(device)
+
+	observed_mask_patches_fill= observed_mask
+	L = observed_mask.sum(dim=1, keepdim=True)  # (bs, 1, D)
+	observed_mask_patches_fill_reindex = (aux_tensor < L)  # let first L[i] to be True
+
+	# Return a indices tuple like ([...], [...], [...])
+	mask_inds = torch.nonzero(observed_mask_patches_fill_reindex.permute(0, 2, 1), as_tuple=True)  # reset indices
+	ind_values = torch.nonzero(observed_mask_patches_fill.permute(0, 2, 1), as_tuple=True)[-1]  # original indices of dimension 2
+
+	# Fill n_tp if the number of observed points are less than max_patch_len
+	patch_indices_final.index_put_((mask_inds[0], mask_inds[2], mask_inds[1]), ind_values)
+
+	pad_zeros_data = torch.zeros([n_batch, 1, n_dim]).to(device)
+	observed_tp_patches = torch.cat([observed_tp_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)  # (n_batch, max_patch_len, n_dim)
+	observed_data_patches = torch.cat([observed_data_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)
+	observed_mask_patches = torch.cat([observed_mask_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)
+
+	split_dict["observed_tp"] = observed_tp_patches
+	split_dict["observed_data"] = observed_data_patches
+	split_dict["observed_mask"] = observed_mask_patches
+	return split_dict
+
+def patch_variable_time_collate_fn_old(batch_,
+								   args,
+								   device = torch.device("cpu"),
+								   data_type = "train",
+								   data_min = None,
+								   data_max = None,
+								   time_max = None):
+	"""
+	Prende i timestep osservati di ogni sample e li impacchetta direttamente con padding legato al max_timestep: i valori
+	temporali non sono allineati.
 	Expects a batch of time series data in the form of (record_id, tt, vals, mask) where
 		- record_id is a patient id
 		- tt is a (T, ) tensor containing T time values of observations.
@@ -482,9 +609,9 @@ def patch_variable_time_collate_fn(batch_, args, device = torch.device("cpu"), d
 		"data": combined_vals, # (n_batch, T_o, D)
 		"time_steps": combined_tt, # (T_o, )
 		"mask": combined_mask, # (n_batch, T_o, D)
-		"data_to_predict": predicted_data,
-		"tp_to_predict": predicted_tp,
-		"mask_predicted_data": predicted_mask,
+		"data_to_predict": predicted_data,  # (n_batch, T, D)
+		"tp_to_predict": predicted_tp,  # (n_batch, T)
+		"mask_predicted_data": predicted_mask,  # (n_batch, T, D)
 		}
 
 	data_dict = split_and_patch_batch(data_dict, args, n_observed_tp, patch_indices)

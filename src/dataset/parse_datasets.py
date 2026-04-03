@@ -20,6 +20,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		elif args.dataset_name == "mimic":
 			total_dataset = MIMIC(os.path.join(args.data_dir, args.dataset_name),
 								  n_samples=args.n,
+								  download=True,
 								  device=args.device)
 
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
@@ -126,6 +127,8 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 																train_size= 0.75,
 																random_state = 42,
 																shuffle = False)
+		# train_data = train_data[:100]
+
 		print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
 		test_record_ids = [record_id for record_id, tt, vals, mask in test_data]
 		print("Test record ids (first 20):", test_record_ids[:20])
@@ -253,7 +256,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 									  shuffle=True,
 									  collate_fn= lambda batch: collate_fn(batch,
 																		   args,
-																		   args.device,
+																		   'cpu',
 																		   data_type = "train",
 																		   data_min = data_min,
 																		   data_max = data_max,
@@ -263,7 +266,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 									shuffle=False,
 									collate_fn= lambda batch: collate_fn(batch,
 																		 args,
-																		 args.device,
+																		 'cpu',
 																		 data_type = "val",
 																		 data_min = data_min,
 																		 data_max = data_max,
@@ -273,7 +276,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 									 shuffle=False,
 									 collate_fn= lambda batch: collate_fn(batch,
 																		  args,
-																		  args.device,
+																		  'cpu',
 																		  data_type = "test",
 																		  data_min = data_min,
 																		  data_max = data_max,

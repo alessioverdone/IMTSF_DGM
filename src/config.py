@@ -8,79 +8,56 @@ import torch
 import yaml
 
 
+
+
 class Parameters:
     def __init__(self):
         project_dir = Path(__file__).resolve().parents[1]
 
-        # Trainer parameters
-        self.accelerator = 'gpu'
-        self.log_every_n_steps = 300
-        self.max_epochs = 5
-        self.enable_progress_bar = True
-        self.check_val_every_n_epoch = 3
-        self.node_features = 23
-        self.time_series_step = 4
-        self.device = torch.device('cuda' if self.accelerator == 'gpu' and torch.cuda.is_available() else 'cpu')
-
-        # Datasets
-        self.dataset_name = 'physionet'  # ['PV', 'wind', 'METR-LA', 'Electricity', 'solar', 'physionet']
+        # Path
+        self.dataset_name = 'ushcn'  #  ['physionet', 'activity', 'mimic','ushcn']
         self.data_dir = os.path.join(project_dir, 'data')
-        self.dataset_path = os.path.join(project_dir,
-                                         'data',
-                                         'Generated_time_series_output_31_with_weigth_multivariate_and_time.json')
+        self.registry_dir = os.path.join(project_dir, 'registry')
+        self.logs_dir = os.path.join(self.registry_dir, 'logs')
+
         self.config_path = os.path.join(project_dir,
                                          'registry',
                                          'configurations')
 
-        # DGM Model parameters
-        self.conv_layers = [[32, 32], [32, 16], [16, 8]]
-        self.dgm_layers = [[32, 16, 4], [36, 16, 4], []]
-        self.fc_layers = [8, 8, 3]
-        self.pre_fc = [-1, 32]
-        self.emb_dim = 64
-        self.gfun = 'gcn'
-        self.ffun = 'gcn'  # 'gcn', 'gat', None, 'mlp', 'knn'
-        self.k = 5
-        self.pooling = 'add'
-        self.distance = 'euclidean'
-        self.dgm_mode = 'simple'
-
+        # Trainer parameters
+        self.accelerator = 'gpu'
+        self.device = torch.device('cuda' if self.accelerator == 'gpu' and torch.cuda.is_available() else 'cpu')
+        self.log_every_n_steps = 300
+        self.max_epochs = 500
+        self.enable_progress_bar = True
+        self.check_val_every_n_epoch = 3
         self.dropout = 0.0
         self.lr = 1e-3
-        self.test_eval = 10
-        self.model = 'prova'  # 'dgm_gcn', 'dgm_gat', 'gcn', 'gat', 'mlp' 'hi-patch'
-
+        # self.test_eval = 10
         self.early_stop_callback_flag = False
         self.early_stop_patience = 4
-
-        self.lags = 24
-        self.prediction_window = 24
-        # self.batch_size = 128
-        self.num_nodes = 31
         self.logging = False
         self.save_ckpts = False
         self.save_logs = True
         self.chkpt_dir = ''
         self.reproducible = True
-        self.seed = 42
+        self.exp_id = 0
+        self.seed = 456  # 42
+        self.batch_size = 32
 
-        self.connectivity_threshold_tsl = 0.1
-        self.train_len = 0.6
-        self.val_len = 0.2
-        self.test_len = 0.2
-        self.workers = 2
-        self.stride_tsl = 1
+        # Models
+        self.model = 'grape'  # 'dgm_gcn', 'dgm_gat', 'gcn', 'gat', 'mlp' 'hi-patch'
 
         # Hi-Patch parameters
         self.state = 'def'
         self.epoch = 1000
         self.patience = 10
-        self.history = 24
+        self.history = 3000  # 24 per physionet
         self.pred_window = 1
         self.n = int(1e8)  #n_samples
-        self.n_months = 48
+        self.n_months = 48  # ushcn
         self.ndim = 0
-        self.patch_size = 24  # 24
+        self.patch_size = 750  # 24 per phisionet
         self.npatch = 1
         self.patch_layer = 1
         self.scale_patch_size = 1
@@ -88,18 +65,13 @@ class Parameters:
         self.hid_dim = 32
         self.N = 1
         self.logmode = 'a'
-        self.lr = 1e-3
         self.w_decay = 0.0
-        self.batch_size = 4
         self.load = None
-        self.seed = 1
-        # self.dataset = 'physionet'
         self.quantization = 0.0
-        # self.model = 'Hi-Patch'
         self.nhead = 1
         self.nlayer = 3
         self.ps = 24
-        self.stride = 24
+        self.stride = 750  # 24 per phisionet
         self.alpha = 1
         self.res = 1
         self.gpu = '0'
@@ -108,7 +80,36 @@ class Parameters:
         self.experimentID = -1
         self.patch_ts = True  # problemi con observed_tp, non vengono esplicitati i timestep per canale a differenza di patch_ts = True
 
+        # DGM
+        self.node_features = 23
+        self.conv_layers = [[32, 32], [32, 16], [16, 8]]
+        self.dgm_layers = [[32, 16, 16], [48, 32, 4], []]
+        self.fc_layers = [8, 8, 32]
+        self.pre_fc = [-1, 32]
+        self.emb_dim = 64
+        self.gfun = 'gat'
+        self.ffun = 'gat'  # 'gcn', 'gat', None, 'mlp', 'knn'
+        self.k = 5
+        self.pooling = 'add'
+        self.distance = 'euclidean'
+        self.dgm_mode = 'simple'
+        self.from_dataset_config(os.path.join(self.config_path, 'dataset_config.yaml'))
 
+        # Grape
+        self.gnn_name = 'GCN'  # ['GCN', 'GAT']
+        self.gnn_layers = 2
+        self.pool_num_heads = 4
+
+        # self.lags = 24
+        # self.prediction_window = 24
+        # self.batch_size = 128
+        # self.num_nodes = 31
+        # self.connectivity_threshold_tsl = 0.1
+        # self.train_len = 0.6
+        # self.val_len = 0.2
+        # self.test_len = 0.2
+        # self.workers = 2
+        # self.stride_tsl = 1
 
     def to_yaml(self, path: str):
         with open(path, 'w') as f:
@@ -122,6 +123,22 @@ class Parameters:
         for key, value in data.items():
             setattr(instance, key, value)
         return instance
+
+    def update(self, combo: dict) -> 'Parameters':
+        for key, value in combo.items():
+            setattr(self, key, value)
+        if 'dataset_name' in combo:
+            self.from_dataset_config(os.path.join(self.config_path, 'dataset_config.yaml'))
+        return self
+
+
+    def from_dataset_config(self, path: str):
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f)
+        curr_data = data[self.dataset_name]
+        for key, value in curr_data.items():
+            setattr(self, key, value)
+
 
     def __str__(self) -> str:
         # pformat rende leggibili liste/nidificazioni

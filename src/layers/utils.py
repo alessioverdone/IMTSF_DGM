@@ -1,4 +1,6 @@
 import torch
+from torch_geometric.nn import GCN, GAT
+from torch_geometric.data import Data
 
 # Euclidean distance
 def pairwise_euclidean_distances(x, dim=-1):
@@ -27,9 +29,6 @@ def sparse_eye(size):
     cls = getattr(torch.sparse, values.type().split(".")[-1])
     return cls(indices, values, torch.Size([size, size]))
 
-
-import torch
-from torch_geometric.data import Data, Batch
 
 
 def build_graph_from_mask(X: torch.Tensor, Mask: torch.Tensor):
@@ -124,3 +123,21 @@ def build_graph_from_mask(X: torch.Tensor, Mask: torch.Tensor):
     edge_index = torch.stack([all_src, all_dst], dim=0)  # (2, E)
 
     return Data(x=x_valid, edge_index=edge_index, batch=batch_vec)
+
+def select_gnn(args):
+    if args.gnn_name == 'GCN':
+        gnn = GCN(in_channels=args.hid_dim,
+                  out_channels=args.hid_dim,
+                  hidden_channels=args.hid_dim,
+                  num_layers=args.gnn_layers,
+                  dropout=args.dropout,)
+    elif args.gnn_name == 'GAT':
+        gnn = GAT(in_channels=args.hid_dim,
+                  out_channels=args.hid_dim,
+                  hidden_channels=args.hid_dim,
+                  num_layers=args.gnn_layers,
+                  v2=True,
+                  dropout=args.dropout)
+    else:
+        raise ValueError('Unknown gnn {}'.format(args.gnn_name))
+    return gnn

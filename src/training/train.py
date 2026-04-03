@@ -41,13 +41,14 @@ def train(training, dataModuleInstance, run_params):
             total=n_train,
         )
         for batch in pbar:
-            batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+            if batch is not None:
+                batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-            metrics = training.training_step(batch_dict)
-            for k, v in metrics.items():
-                train_metrics_accum[k].append(v)
+                metrics = training.training_step(batch_dict)
+                for k, v in metrics.items():
+                    train_metrics_accum[k].append(v)
 
-            pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in train_metrics_accum.items()})
+                pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in train_metrics_accum.items()})
 
         avg_train = {k: float(np.mean(v)) for k, v in train_metrics_accum.items()}
 
@@ -85,13 +86,14 @@ def validate(training, dataModuleInstance, run_params):
                      enable=run_params.enable_progress_bar,
                      total=n_val)
         for batch in pbar:
-            batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+            if batch is not None:
+                batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
-            metrics = training.validation_step(batch_dict)
-            for k, v in metrics.items():
-                val_metrics_accum[k].append(v)
+                metrics = training.validation_step(batch_dict)
+                for k, v in metrics.items():
+                    val_metrics_accum[k].append(v)
 
-            pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in val_metrics_accum.items()})
+                pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in val_metrics_accum.items()})
 
     return {k: float(np.mean(v)) for k, v in val_metrics_accum.items()}
 
@@ -110,12 +112,13 @@ def test(training, dataModuleInstance, run_params):
         )
         pbar.leave = True
         for batch in pbar:
-            batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-            metrics = training.test_step(batch_dict)
-            for k, v in metrics.items():
-                test_metrics_accum[k].append(v)
+            if batch is not None:
+                batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+                metrics = training.test_step(batch_dict)
+                for k, v in metrics.items():
+                    test_metrics_accum[k].append(v)
 
-            pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in test_metrics_accum.items()})
+                pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in test_metrics_accum.items()})
 
     avg_test = {k: float(np.mean(v)) for k, v in test_metrics_accum.items()}
 

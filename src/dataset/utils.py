@@ -485,7 +485,6 @@ def split_train_test_data_and_time(data, time_steps, train_fraq = 0.8):
 def get_next_batch(dataloader):
 	# Make the union of all time points and perform normalization across the whole dataset
 	data_dict = dataloader.__next__()
-	
 	return data_dict
 
 def get_ckpt_model(ckpt_path, model, device):
@@ -535,8 +534,11 @@ def reverse(tensor):
 	return tensor[idx]
 
 
-def create_net(n_inputs, n_outputs, n_layers = 1, 
-	n_units = 100, nonlinear = nn.Tanh):
+def create_net(n_inputs,
+			   n_outputs,
+			   n_layers = 1,
+			   n_units = 100,
+			   nonlinear = nn.Tanh):
 	layers = [nn.Linear(n_inputs, n_units)]
 	for i in range(n_layers):
 		layers.append(nonlinear())
@@ -832,10 +834,15 @@ def split_and_subsample_batch(data_dict, args, n_observed_tp):
 
 
 def compute_loss_all_batches(model,
-	test_dataloader, args,
-	n_batches, experimentID, device,
-	n_traj_samples = 1, kl_coef = 1., 
-	max_samples_for_eval = None):
+							 test_dataloader,
+							 args,
+							 n_batches,
+							 experimentID,
+							 device,
+							 n_traj_samples=1,
+							 kl_coef=1.,
+							 max_samples_for_eval=None,
+							 batch_size=None):
 
 	total = {}
 	total["loss"] = 0
