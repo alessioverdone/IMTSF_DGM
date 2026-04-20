@@ -7,6 +7,30 @@ from src.layers.utils import build_graph_from_mask, select_gnn
 
 
 class QueryPooling(nn.Module):
+    """
+    QueryPooling risolve un problema specifico: dopo il GNN hai graph.x di shape (mask==1).sum(), F),
+    cioè solo i nodi validi, numero variabile per ogni sample nel batch. Devi trasformarlo in qualcosa di shape fissa
+    (B, N, F) per il decoder.
+
+    Step by step:
+    1. Padding: Raggruppa i nodi per sample (tramite batch index) e li mette in un tensore (B, N_max, F) con
+        zero-padding. Crea una key_padding_mask booleana: True = posizione paddata (da ignorare nell'attention).
+    2. Cross-Attention:
+        Query: N_2 vettori learnable (B, N_2, F) — uno per ogni variabile della serie
+        Key/Value: i nodi del grafo (B, N_max, F) con la mask
+        Ogni query "interroga" l'insieme dei nodi osservati per quella serie e aggrega le loro feature. Le query sono
+        learnable quindi il modello impara come aggregare.
+    3. Output: out ha shape (B, N_2, F) — esattamente una rappresentazione per ogni variabile, indipendentemente da
+        quanti nodi erano presenti. Viene reshapato a (B*N_2, F) e poi nel forward principale riportato a (B, N, D).
+
+    Intuitivamente: è un'operazione di read-out del grafo che invece di fare mean/sum pooling usa attention con query
+    fisse — una per variabile. Questo permette al modello di estrarre selettivamente informazioni rilevanti dai nodi
+    osservati per ricostruire la rappresentazione di tutte le N variabili, anche quelle non osservate (che non avevano
+    nodi nel grafo). È particolarmente adatto per multivariate irregolare proprio perché gestisce il numero variabile
+    di osservazioni senza perdere informazione con un semplice mean pooling.
+
+    """
+
     def __init__(self, N_2, F, num_heads=4):
         super().__init__()
         self.N_2 = N_2

@@ -194,6 +194,7 @@ class DGM_d(nn.Module):
     def sample_without_replacement_not_so_old(self, x):
         x = torch.reshape(x[0,:,:], (-1, self.num_nodes, x.shape[2]))
         #TODO: probabilmente dovrai fare un flatten da x=(b,n,t,f) a x=(b,n,f)
+        # magari puoi usare Queypooling per fare questa operazione
         # x = x.mean(dim=2)
         b, n, _ = x.shape
 

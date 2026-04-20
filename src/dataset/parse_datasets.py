@@ -20,7 +20,6 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		elif args.dataset_name == "mimic":
 			total_dataset = MIMIC(os.path.join(args.data_dir, args.dataset_name),
 								  n_samples=args.n,
-								  download=True,
 								  device=args.device)
 
 		seen_data, test_data = model_selection.train_test_split(total_dataset,

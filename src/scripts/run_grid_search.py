@@ -57,27 +57,16 @@ def run_single_combination(combo: dict,
 
 def main():
     search_space = {
-        'dataset_name': ['physionet', 'activity', 'ushcn'],
+        'dataset_name': ['mimic'],
         'dropout': [0.0],
         'lr': [1e-3],
-        'batch_size': [32],
+        'batch_size': [64],
         'gnn_name': ['GAT'],
-        'hid_dim': [16],
-        'gnn_layers': [1],
-        'pool_num_heads': [1],
-        'max_epochs': [5],
+        'hid_dim': [64],
+        'gnn_layers': [3],
+        'pool_num_heads': [16]
     }
 
-    # search_space = {
-    #     'dataset_name': ['physionet', 'activity', 'ushcn'],
-    #     'dropout': [0.0, 0.2, 0.4],
-    #     'lr': [1e-3, 1e-4, 1e-5],
-    #     'batch_size': [2, 4, 8, 16, 32, 64],
-    #     'gnn_name': ['GAT', 'GCN'],
-    #     'hid_dim': [16, 32, 64, 128],
-    #     'gnn_layers': [1, 2, 3, 4],
-    #     'pool_num_heads': [1, 2, 3, 4, 5]
-    # }
 
     global_config = {
         'save_ckpts': False,
@@ -85,14 +74,17 @@ def main():
         'save_logs': True,
         'reproducible': True}
 
-    seed_list = [654, 897, 26, 7, 2369]
+    seed_list = [654, 897, 26, ]
     log_folder = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     global_config['logs_dir'] = os.path.join(Parameters().logs_dir, log_folder)
     os.makedirs(global_config['logs_dir'], exist_ok=True)
     combinations = build_combinations(search_space)
     print(f'Total combinations: {len(combinations)}')
 
+    last_run=0
     for cont, combo in enumerate(combinations):
+        if cont < last_run:
+            continue
         # try:
         #     print(f'\nRun {cont + 1}/{len(combinations)}')
         #     run_single_combination(combo, cont, global_config, seed_list)
@@ -100,8 +92,6 @@ def main():
         #     print('Error: ', sys.exc_info()[0])
         print(f'\nRun {cont + 1}/{len(combinations)}')
         run_single_combination(combo, cont, global_config, seed_list)
-
-
 
 if __name__ == '__main__':
     main()

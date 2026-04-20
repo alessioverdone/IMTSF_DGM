@@ -30,7 +30,7 @@ class Parameters:
         self.log_every_n_steps = 300
         self.max_epochs = 500
         self.enable_progress_bar = True
-        self.check_val_every_n_epoch = 3
+        self.check_val_every_n_epoch = 1
         self.dropout = 0.0
         self.lr = 1e-3
         # self.test_eval = 10
@@ -43,7 +43,7 @@ class Parameters:
         self.reproducible = True
         self.exp_id = 0
         self.seed = 456  # 42
-        self.batch_size = 32
+        self.batch_size = 4
 
         # Models
         self.model = 'grape'  # 'dgm_gcn', 'dgm_gat', 'gcn', 'gat', 'mlp' 'hi-patch'

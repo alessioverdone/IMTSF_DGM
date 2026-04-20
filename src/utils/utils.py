@@ -189,48 +189,7 @@ def initialize_log_parameters(cont: int, combo: dict) -> dict:
     print(' '.join(f'{k}: {v}' for k, v in grid_params.items()))
     return grid_params
 
-# def update_current_configuration(run_combination, seed, run_params, reproducible, save_ckpts, save_logs,
-#                                  early_stop_callback_flag):
-#     model_item = run_combination[0]
-#     dataset_name_item = run_combination[1]
-#     emb_dim_item = run_combination[2]
-#     k_item = run_combination[3]
-#     batch_size_item = run_combination[4]
-#     lags_item = run_combination[5]
-#     prediction_window_item = run_combination[6]
-#     dropout_item = run_combination[7]
-#
-#     run_params.seed = seed
-#     run_params.emb_dim = emb_dim_item
-#     # conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters(emb_dim_item)
-#     conv_layers, dgm_layers, fc_layers, pre_fc = make_dgm_network_parameters_v2(emb_dim_item)
-#
-#     run_params.conv_layers = conv_layers
-#     run_params.dgm_layers = dgm_layers
-#     run_params.fc_layers = fc_layers
-#     run_params.pre_fc = pre_fc
-#     run_params.model = model_item
-#     if 'dgm' in model_item:
-#         ffun_item = model_item.split('_')[-2]
-#         gfun_item = model_item.split('_')[-1]
-#         run_params.ffun = ffun_item
-#         run_params.gfun = gfun_item
-#
-#     run_params.k = k_item
-#     run_params.batch_size = batch_size_item
-#     run_params.lags = lags_item
-#     run_params.prediction_window = prediction_window_item
-#
-#     run_params.dataset_name = dataset_name_item
-#     run_params.dataset = dataset_name_item
-#
-#     run_params.chkpt_dir = "../checkpoints/" + dataset_name_item + '/'
-#     run_params.reproducible = reproducible
-#     run_params.save_ckpts = save_ckpts
-#     run_params.early_stop_callback_flag = early_stop_callback_flag
-#     run_params.save_logs = save_logs
-#     run_params.dropout = dropout_item
-#     return run_params
+
 
 
 def get_datamodule(run_params):

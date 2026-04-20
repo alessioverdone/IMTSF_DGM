@@ -215,4 +215,5 @@ def collate_GOB(batch):
 
 if __name__ == '__main__':
     torch.manual_seed(1991)
-    dataset = MIMIC('../data/mimic')
+    dataset = MIMIC('../../data/mimic')
+    print('Done!')
