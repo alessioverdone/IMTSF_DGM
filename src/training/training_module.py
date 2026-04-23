@@ -17,6 +17,8 @@ class Training:
 
         # Import model
         self.model = get_model(hparams)
+        num_params = sum(p.numel() for p in self.model.parameters())
+        print(f'Parameters: {num_params}')
 
         # Training params
         self.scheduler = None

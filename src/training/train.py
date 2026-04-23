@@ -1,4 +1,6 @@
 import itertools
+import time
+
 import torch
 import numpy as np
 from collections import defaultdict
@@ -32,6 +34,7 @@ def train(training, dataModuleInstance, run_params):
     for epoch in range(run_params.max_epochs):
         training.model.train()
         train_metrics_accum = defaultdict(list)
+        start_time = time.time()
 
         n_train = dataModuleInstance["n_train_batches"]
         pbar = _pbar(
@@ -55,7 +58,7 @@ def train(training, dataModuleInstance, run_params):
         if run_params.enable_progress_bar:
             print(f"Epoch {epoch + 1}/{run_params.max_epochs} | " +
                   " | ".join(f"{k}: {v:.4f}" for k, v in avg_train.items()))
-
+        print(f'Epoch time: {time.time() - start_time}')
         if (epoch + 1) % run_params.check_val_every_n_epoch == 0:
             avg_val = validate(training, dataModuleInstance, run_params)
             training.on_validation_epoch_end(avg_val)

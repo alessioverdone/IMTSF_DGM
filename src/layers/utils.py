@@ -31,7 +31,8 @@ def sparse_eye(size):
 
 
 
-def build_graph_from_mask(X: torch.Tensor, Mask: torch.Tensor):
+def build_graph_from_mask(X: torch.Tensor,
+                          Mask: torch.Tensor):
     """
     X    : (B, F, T, H)
     Mask : (B, F, T)  — valori in {0,1}

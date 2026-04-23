@@ -96,9 +96,9 @@ class Parameters:
         self.from_dataset_config(os.path.join(self.config_path, 'dataset_config.yaml'))
 
         # Grape
-        self.gnn_name = 'GCN'  # ['GCN', 'GAT']
+        self.gnn_name = 'GAT'  # ['GCN', 'GAT']
         self.gnn_layers = 2
-        self.pool_num_heads = 4
+        self.pool_num_heads = 8
 
         # self.lags = 24
         # self.prediction_window = 24
