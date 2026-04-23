@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from src.config import Parameters
 from src.layers.mds import DGMmodule
-from src.layers.utils import build_graph_from_mask, select_gnn
+from src.layers.utils import build_graph_from_mask, select_gnn, build_graph_from_mask_v2
 
 
 class QueryPooling(nn.Module):
@@ -138,8 +138,9 @@ class Grape(nn.Module):
         X = self.relu(X + var_emb + te_his)  # node-graph embedding  -> [B, N, T_in, D]
 
         # GNN
-        graph = build_graph_from_mask(X,
-                                      mask.squeeze())  # Data object: graph.x:[(mask == 1.).sum(), D], graph.edge_index:[2,E]
+        graph = build_graph_from_mask_v2(X,
+                                         mask.squeeze(),
+                                         inter_mode=self.args.inner_mode)  # Data object: graph.x:[(mask == 1.).sum(), D], graph.edge_index:[2,E]
         graph.x = self.gnn(x=graph.x,
                            edge_index=graph.edge_index,
                            batch=graph.batch)

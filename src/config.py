@@ -99,6 +99,7 @@ class Parameters:
         self.gnn_name = 'GAT'  # ['GCN', 'GAT']
         self.gnn_layers = 2
         self.pool_num_heads = 8
+        self.inner_mode = 1
 
         # self.lags = 24
         # self.prediction_window = 24

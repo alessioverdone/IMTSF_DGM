@@ -64,7 +64,8 @@ def main():
         'gnn_name': ['GAT'],
         'hid_dim': [64],
         'gnn_layers': [3],
-        'pool_num_heads': [16]
+        'pool_num_heads': [16],
+        'inner_mode': [4,3,1,2],
     }
 
 
