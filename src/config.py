@@ -30,12 +30,14 @@ class Parameters:
         self.log_every_n_steps = 300
         self.max_epochs = 500
         self.enable_progress_bar = True
-        self.check_val_every_n_epoch = 1
+        self.check_val_every_n_epoch = 3
         self.dropout = 0.0
         self.lr = 1e-3
+        self.lr_patience = 2
+        self.lr_factor = 0.8
         # self.test_eval = 10
         self.early_stop_callback_flag = False
-        self.early_stop_patience = 4
+        self.early_stop_patience = 5
         self.logging = False
         self.save_ckpts = False
         self.save_logs = True
@@ -97,6 +99,7 @@ class Parameters:
 
         # Grape
         self.gnn_name = 'GAT'  # ['GCN', 'GAT']
+        self.decoder_name = 'INR'  # ['simple', 'film', 'gated', 'filmSwiglu', 'gru', 'crossAttn','INR']
         self.gnn_layers = 2
         self.pool_num_heads = 8
         self.inner_mode = 1

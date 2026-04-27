@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from src.config import Parameters
+from src.layers.decoder import select_decoder
 from src.layers.mds import DGMmodule
 from src.layers.utils import build_graph_from_mask, select_gnn, build_graph_from_mask_v2
 
@@ -80,13 +81,16 @@ class Grape(nn.Module):
         self.obs_enc = nn.Linear(1, args.hid_dim)
         self.nodevec = nn.Embedding(self.N, args.hid_dim)
 
+        # # Decoder
+        # self.decoder = nn.Sequential(
+        #     nn.Linear(args.hid_dim * 2, args.hid_dim),
+        #     nn.ReLU(inplace=True),
+        #     nn.Linear(args.hid_dim, args.hid_dim),
+        #     nn.ReLU(inplace=True),
+        #     nn.Linear(args.hid_dim, 1))
+
         # Decoder
-        self.decoder = nn.Sequential(
-            nn.Linear(args.hid_dim * 2, args.hid_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(args.hid_dim, args.hid_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(args.hid_dim, 1))
+        self.decoder = select_decoder(args)
 
         # Latent GNN
         self.gnn = select_gnn(args)
@@ -155,8 +159,11 @@ class Grape(nn.Module):
 
         # Decoder: embeddings
         te_pred = self.LearnableTE(time_steps_to_predict)  # [B, N, L_out, 1] -> [B, N, L_out, D]
-        h = torch.cat([h, te_pred], dim=-1)  # [B, N, L_out, D] -> [B, N, L_out, 2D]
-        outputs = self.decoder(h).squeeze(dim=-1).permute(0, 2, 1).unsqueeze(dim=0)  # [B, N, L_out, 2D] -> decoder -> [1, B, L_out, N]
+
+        # Decoder: forward
+        outputs = self.decoder(h, te_pred).squeeze(dim=-1).permute(0, 2, 1).unsqueeze(dim=0)  # [B, N, L_out, 2D] -> decoder -> [1, B, L_out, N]
+
+
         out_dict['pred_y'] = outputs
         return out_dict
 

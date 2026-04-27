@@ -75,8 +75,8 @@ class Training:
                                           lr=self.args.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,
                                                               mode='min',
-                                                              patience=2,
-                                                              factor=0.8)
+                                                              patience=self.args.lr_patience,
+                                                              factor=self.args.lr_factor)
 
     def training_step(self, train_batch):
         # STEP PER ELIMINARE SAMPLE CON MASK.SUM() == 0

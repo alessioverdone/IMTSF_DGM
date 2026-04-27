@@ -1,3 +1,4 @@
+import json
 import os
 os.environ['TORCH_CUDA_ARCH_LIST'] = "9.0+PTX"  # per nuove GPU
 
@@ -57,15 +58,16 @@ def run_single_combination(combo: dict,
 
 def main():
     search_space = {
-        'dataset_name': ['mimic'],
+        'dataset_name': ['activity', 'ushcn', 'mimic', 'physionet'],
         'dropout': [0.0],
         'lr': [1e-3],
-        'batch_size': [64],
+        'batch_size': [4, 8],
         'gnn_name': ['GAT'],
-        'hid_dim': [64],
-        'gnn_layers': [3],
-        'pool_num_heads': [16],
-        'inner_mode': [4,3,1,2],
+        'hid_dim': [32, 64],
+        'gnn_layers': [1, 2],
+        'pool_num_heads': [4, 8, 16],
+        'inner_mode': [1,2,3,4],
+        'decoder_name' : ['INR', 'film', 'gated', 'filmSwiglu', 'gru', 'crossAttn', 'simple']
     }
 
 
@@ -81,6 +83,12 @@ def main():
     os.makedirs(global_config['logs_dir'], exist_ok=True)
     combinations = build_combinations(search_space)
     print(f'Total combinations: {len(combinations)}')
+
+    # Save serach params
+    static_run_params = Parameters().update(combinations[0] | global_config)
+    static_run_params.to_yaml(os.path.join(global_config['logs_dir'], 'static_run_params.yaml'))
+    with open(os.path.join(global_config['logs_dir'], 'search_space_params.json'), "w", encoding="utf-8") as f:
+        json.dump(search_space|global_config, f, indent=4, ensure_ascii=False)
 
     last_run=0
     for cont, combo in enumerate(combinations):
