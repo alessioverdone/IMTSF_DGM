@@ -135,7 +135,7 @@ if __name__ == "__main__":
         csv_ = sys.argv[2] if len(sys.argv) > 2 else None
         xls_ = sys.argv[3] if len(sys.argv) > 3 else None
     else:
-        folder = '/home/user/Scrivania/PhD/DGM/docs/logs esperimenti/2026-04-07T13-13-29'
+        folder = '/home/user/Scrivania/PhD/DGM/docs/logs esperimenti/raw_logs/2026-04-27T19-54-05'
         inp = os.path.join(folder, 'log.txt')
         csv_ = os.path.join(folder, 'log_csv.csv')
         xls_ = os.path.join(folder, 'log_x.xlsx')

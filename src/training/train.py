@@ -9,7 +9,7 @@ from tqdm import tqdm
 _BAR_FMT = "{desc}: {percentage:3.0f}%|{bar}| {n}/{total} [{elapsed}<{remaining}, {rate_fmt}]{postfix}"
 
 
-def _pbar(loader, desc, enable, total=None):
+def _pbar(loader, desc, enable, total=None, **kwargs):
     return tqdm(
         loader,
         desc=desc,
@@ -28,6 +28,7 @@ def train(training, dataModuleInstance, run_params):
 
     # Early stopping
     early_stop_counter = 0
+    log_every = 50
     early_stop_best = float('inf')
 
     # Training
@@ -42,8 +43,10 @@ def train(training, dataModuleInstance, run_params):
             desc=f"Epoch {epoch + 1}/{run_params.max_epochs} [train]",
             enable=run_params.enable_progress_bar,
             total=n_train,
+            mininterval=1.0,
+            miniters=50,
         )
-        for batch in pbar:
+        for step, batch in enumerate(pbar):
             if batch is not None:
                 batch_dict = {k: v.to(run_params.device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
@@ -51,7 +54,8 @@ def train(training, dataModuleInstance, run_params):
                 for k, v in metrics.items():
                     train_metrics_accum[k].append(v)
 
-                pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in train_metrics_accum.items()})
+                if (step + 1) % log_every == 0:
+                    pbar.set_postfix({k: f"{np.mean(v):.4f}" for k, v in train_metrics_accum.items()})
 
         avg_train = {k: float(np.mean(v)) for k, v in train_metrics_accum.items()}
 

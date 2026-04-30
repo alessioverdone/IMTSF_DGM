@@ -64,7 +64,7 @@ class PersonActivity(object):
 		if not self._check_exists():
 			raise RuntimeError('Dataset not found. You can use download=True to download it')
 		
-		if device == torch.device("cpu"):
+		if device == 'cpu':
 			self.data = torch.load(os.path.join(self.processed_folder, self.data_file), map_location='cpu')
 		else:
 			self.data = torch.load(os.path.join(self.processed_folder, self.data_file))

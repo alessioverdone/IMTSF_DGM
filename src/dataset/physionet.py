@@ -387,6 +387,108 @@ def get_seq_length(args, records):
 
 def patch_variable_time_collate_fn(batch_,
                                    args,
+                                   data_type="train",
+                                   data_min=None,
+                                   data_max=None,
+                                   time_max=None):
+	# Il parametro `device` non serve più: tutto resta su CPU.
+
+	batch = list()
+	for sample in batch_:
+		elem_tuple = list()
+		for elem in sample:
+			if isinstance(elem, torch.Tensor):
+				elem_tuple.append(elem)  # niente .to(device)
+			else:
+				elem_tuple.append(elem)
+		batch.append(tuple(elem_tuple))
+
+	D = batch[0][2].shape[1]
+	combined_tt, inverse_indices = torch.unique(torch.cat([ex[1] for ex in batch]),
+	                                            sorted=True, return_inverse=True)
+	n_observed_tp = torch.lt(combined_tt, args.history).sum()
+
+	offset = 0
+	combined_vals = torch.zeros([len(batch), len(combined_tt), D])  # CPU
+	combined_mask = torch.zeros([len(batch), len(combined_tt), D])  # CPU
+	predicted_tp = []
+	predicted_data = []
+	predicted_mask = []
+	for b, (record_id, tt, vals, mask) in enumerate(batch):
+		indices = inverse_indices[offset:offset + len(tt)]
+		offset += len(tt)
+		combined_vals[b, indices] = vals
+		combined_mask[b, indices] = mask
+
+		tmp_n_observed_tp = torch.lt(tt, args.history).sum()
+		predicted_tp.append(tt[tmp_n_observed_tp:])
+		predicted_data.append(vals[tmp_n_observed_tp:])
+		predicted_mask.append(mask[tmp_n_observed_tp:])
+
+	combined_tt = combined_tt[:n_observed_tp]
+	combined_vals = combined_vals[:, :n_observed_tp]
+	combined_mask = combined_mask[:, :n_observed_tp]
+	predicted_tp = pad_sequence(predicted_tp, batch_first=True)
+	predicted_data = pad_sequence(predicted_data, batch_first=True)
+	predicted_mask = pad_sequence(predicted_mask, batch_first=True)
+
+	if (args.dataset_name != 'ushcn'):
+		combined_vals = normalize_masked_data(combined_vals, combined_mask,
+		                                      att_min=data_min, att_max=data_max)
+		predicted_data = normalize_masked_data(predicted_data, predicted_mask,
+		                                       att_min=data_min, att_max=data_max)
+
+	combined_tt = normalize_masked_tp(combined_tt, att_min=0, att_max=time_max)
+	predicted_tp = normalize_masked_tp(predicted_tp, att_min=0, att_max=time_max)
+
+	data_dict = {
+		"data": combined_vals,
+		"time_steps": combined_tt,
+		"mask": combined_mask,
+		"data_to_predict": predicted_data,
+		"tp_to_predict": predicted_tp,
+		"mask_predicted_data": predicted_mask,
+	}
+
+	split_dict = {"tp_to_predict": data_dict["tp_to_predict"].clone(),
+	              "data_to_predict": data_dict["data_to_predict"].clone(),
+	              "mask_predicted_data": data_dict["mask_predicted_data"].clone()}
+
+	observed_tp = data_dict["time_steps"].clone()
+	observed_data = data_dict["data"].clone()
+	observed_mask = data_dict["mask"].clone()
+
+	n_batch, n_tp, n_dim = observed_data.shape
+	observed_tp_patches = observed_tp.view(1, -1, 1).repeat(n_batch, 1, n_dim)
+	observed_data_patches = observed_data
+	observed_mask_patches = observed_mask
+	max_patch_len = int(observed_mask.sum(dim=1).max().item())
+
+	patch_indices_final = torch.full((n_batch, max_patch_len, n_dim), n_tp)  # CPU
+	aux_tensor = torch.arange(max_patch_len).view(1, max_patch_len, 1).repeat(n_batch, 1, n_dim)  # CPU
+
+	observed_mask_patches_fill = observed_mask
+	L = observed_mask.sum(dim=1, keepdim=True)
+	observed_mask_patches_fill_reindex = (aux_tensor < L)
+
+	mask_inds = torch.nonzero(observed_mask_patches_fill_reindex.permute(0, 2, 1), as_tuple=True)
+	ind_values = torch.nonzero(observed_mask_patches_fill.permute(0, 2, 1), as_tuple=True)[-1]
+
+	patch_indices_final.index_put_((mask_inds[0], mask_inds[2], mask_inds[1]), ind_values)
+
+	pad_zeros_data = torch.zeros([n_batch, 1, n_dim])  # CPU
+
+	observed_tp_patches = torch.cat([observed_tp_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)
+	observed_data_patches = torch.cat([observed_data_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)
+	observed_mask_patches = torch.cat([observed_mask_patches, pad_zeros_data], dim=1).gather(1, patch_indices_final)
+
+	split_dict["observed_tp"] = observed_tp_patches
+	split_dict["observed_data"] = observed_data_patches
+	split_dict["observed_mask"] = observed_mask_patches
+	return split_dict
+
+def patch_variable_time_collate_fn_giusta(batch_,
+                                   args,
                                    device=torch.device("cpu"),
                                    data_type="train",
                                    data_min=None,

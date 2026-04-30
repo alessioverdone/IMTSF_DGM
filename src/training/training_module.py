@@ -17,6 +17,8 @@ class Training:
 
         # Import model
         self.model = get_model(hparams)
+        if hparams.compile_model:
+            self.model = torch.compile(self.model)
         num_params = sum(p.numel() for p in self.model.parameters())
         print(f'Parameters: {num_params}')
 

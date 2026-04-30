@@ -1,3 +1,5 @@
+import torch
+
 from src.dataset.utils import inf_generator
 from src.dataset.physionet import *
 from src.dataset.ushcn import *
@@ -41,7 +43,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 
 		batch_size = min(min(len(seen_data), args.batch_size), args.n)
 		print(f'Batch size = {batch_size}')
-		data_min, data_max, time_max = get_data_min_max(seen_data, device='cpu') # (n_dim,), (n_dim,)
+		data_min, data_max, time_max = get_data_min_max(seen_data, device=args.data_device) # (n_dim,), (n_dim,)
 		x_mean = None
 
 		if(patch_ts):
@@ -52,10 +54,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		train_dataloader = DataLoader(train_data,
 									  batch_size= batch_size,
 									  shuffle=True,
-									  num_workers=4,
+									  num_workers=args.num_workers,
+									  prefetch_factor=args.prefetch_factor,
 									  collate_fn= lambda batch: collate_fn(batch,
 																		   args,
-																		   'cpu',
+																		   # args.data_device,
 																		   data_type = "train",
 																		   data_min = data_min,
 																		   data_max = data_max,
@@ -64,10 +67,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		val_dataloader = DataLoader(val_data,
 									batch_size= batch_size,
 									shuffle=False,
-									num_workers=4,
+									num_workers=args.num_workers,
+									prefetch_factor=args.prefetch_factor,
 									collate_fn= lambda batch: collate_fn(batch,
 																		 args,
-																		 'cpu',
+																		 # args.data_device,
 																		 data_type = "val",
 																		 data_min = data_min,
 																		 data_max = data_max,
@@ -75,10 +79,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		test_dataloader = DataLoader(test_data,
 									 batch_size = batch_size,
 									 shuffle=False,
-									 num_workers=4,
+									 num_workers=args.num_workers,
+									 prefetch_factor=args.prefetch_factor,
 									 collate_fn= lambda batch: collate_fn(batch,
 																		  args,
-																		  'cpu',
+																		  # args.data_device,
 																		  data_type = "test",
 																		  data_min = data_min,
 																		  data_max = data_max,
@@ -116,7 +121,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		### list of tuples (record_id, tt, vals, mask) ###
 		total_dataset = USHCN(os.path.join(args.data_dir, args.dataset_name),
 							  n_samples = args.n,
-							  device = 'cpu')
+							  device = args.data_device)
 
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
 																train_size= 0.8,
@@ -136,7 +141,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		record_id, tt, vals, mask = train_data[0]
 		n_samples = len(total_dataset)
 		input_dim = vals.size(-1)
-		data_min, data_max, time_max = get_data_min_max(seen_data, 'cpu')  # (n_dim,), (n_dim,)
+		data_min, data_max, time_max = get_data_min_max(seen_data, args.data_device)  # (n_dim,), (n_dim,)
 		x_mean = None
 
 		if(patch_ts):
@@ -144,36 +149,42 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		else:
 			collate_fn = USHCN_variable_time_collate_fn
 
-		train_data = USHCN_time_chunk(train_data, args, 'cpu')
-		val_data = USHCN_time_chunk(val_data, args, 'cpu')
-		test_data = USHCN_time_chunk(test_data, args, 'cpu')
+		train_data = USHCN_time_chunk(train_data, args, args.data_device)
+		val_data = USHCN_time_chunk(val_data, args, args.data_device)
+		test_data = USHCN_time_chunk(test_data, args, args.data_device)
 		batch_size = args.batch_size
 		print("Dataset n_samples after time split:", len(train_data)+len(val_data)+len(test_data),\
 			len(train_data), len(val_data), len(test_data))
 		train_dataloader = DataLoader(train_data,
 									  batch_size= batch_size,
+									  num_workers=args.num_workers,
+									  prefetch_factor=args.prefetch_factor,
 									  shuffle=True,
 									  collate_fn= lambda batch: collate_fn(batch,
 																		   args,
-																		   'cpu',
+																		   args.data_device,
 																		   time_max = time_max,
 																		   data_max=data_max,
 																		   data_min=data_min))
 		val_dataloader = DataLoader(val_data,
 									batch_size= batch_size,
+									num_workers=args.num_workers,
+									prefetch_factor=args.prefetch_factor,
 									shuffle=False,
 									collate_fn= lambda batch: collate_fn(batch,
 																		 args,
-																		 'cpu',
+																		 args.data_device,
 																		 time_max = time_max,
 																		 data_max=data_max,
 																		 data_min=data_min))
 		test_dataloader = DataLoader(test_data,
 									 batch_size = batch_size,
+									 num_workers=args.num_workers,
+									 prefetch_factor=args.prefetch_factor,
 									 shuffle=False,
 									 collate_fn= lambda batch: collate_fn(batch,
 																		  args,
-																		  'cpu',
+																		  args.data_device,
 																		  time_max = time_max,
 																		  data_max=data_max,
 																		  data_min=data_min))
@@ -210,7 +221,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		total_dataset = PersonActivity(os.path.join(args.data_dir, args.dataset_name),
 									   n_samples = args.n,
 									   download=True,
-									   device = 'cpu')
+									   device = args.data_device)
 
 		# Shuffle and split
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
@@ -232,7 +243,7 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		input_dim = vals.size(-1)
 
 		batch_size = min(min(len(seen_data), args.batch_size), args.n)
-		data_min, data_max, _ = get_data_min_max(seen_data, 'cpu')  # (n_dim,), (n_dim,)
+		data_min, data_max, _ = get_data_min_max(seen_data, args.data_device)  # (n_dim,), (n_dim,)
 		x_mean = None
 
 		time_max = torch.tensor(args.history + args.pred_window)
@@ -243,9 +254,9 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		else:
 			collate_fn = variable_time_collate_fn
 
-		train_data = Activity_time_chunk(train_data, args, 'cpu')
-		val_data = Activity_time_chunk(val_data, args, 'cpu')
-		test_data = Activity_time_chunk(test_data, args, 'cpu')
+		train_data = Activity_time_chunk(train_data, args, args.data_device)
+		val_data = Activity_time_chunk(val_data, args, args.data_device)
+		test_data = Activity_time_chunk(test_data, args, args.data_device)
 		batch_size = args.batch_size
 
 		print("Dataset n_samples after time split:", len(train_data)+len(val_data)+len(test_data),\
@@ -253,33 +264,39 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		train_dataloader = DataLoader(train_data,
 									  batch_size= batch_size,
 									  shuffle=True,
+									  num_workers=args.num_workers,
+									  prefetch_factor=args.prefetch_factor,
 									  collate_fn= lambda batch: collate_fn(batch,
 																		   args,
-																		   'cpu',
+																		   # activity_device,
 																		   data_type = "train",
-																		   data_min = data_min,
-																		   data_max = data_max,
-																		   time_max = time_max))
+																		   data_min = data_min.to(args.data_device),
+																		   data_max = data_max.to(args.data_device),
+																		   time_max = time_max.to(args.data_device)))
 		val_dataloader = DataLoader(val_data,
 									batch_size= batch_size,
 									shuffle=False,
-									collate_fn= lambda batch: collate_fn(batch,
+									num_workers=args.num_workers,
+									prefetch_factor=args.prefetch_factor,
+		                            collate_fn= lambda batch: collate_fn(batch,
 																		 args,
-																		 'cpu',
+																		 # activity_device,
 																		 data_type = "val",
-																		 data_min = data_min,
-																		 data_max = data_max,
-																		 time_max = time_max))
+																		 data_min = data_min.to(args.data_device),
+																		 data_max = data_max.to(args.data_device),
+																		 time_max = time_max.to(args.data_device)))
 		test_dataloader = DataLoader(test_data,
 									 batch_size = batch_size,
 									 shuffle=False,
-									 collate_fn= lambda batch: collate_fn(batch,
+									 num_workers=args.num_workers,
+									 prefetch_factor=args.prefetch_factor,
+		                             collate_fn= lambda batch: collate_fn(batch,
 																		  args,
-																		  'cpu',
+																		  # activity_device,
 																		  data_type = "test",
-																		  data_min = data_min,
-																		  data_max = data_max,
-																		  time_max = time_max))
+																		  data_min = data_min.to(args.data_device),
+																		  data_max = data_max.to(args.data_device),
+																		  time_max = time_max.to(args.data_device)))
 
 		data_objects = {
 					"train_dataloader": inf_generator(train_dataloader),

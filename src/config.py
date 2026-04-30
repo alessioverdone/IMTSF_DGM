@@ -26,6 +26,7 @@ class Parameters:
 
         # Trainer parameters
         self.accelerator = 'gpu'
+        self.data_device = 'cpu'
         self.device = torch.device('cuda' if self.accelerator == 'gpu' and torch.cuda.is_available() else 'cpu')
         self.log_every_n_steps = 300
         self.max_epochs = 500
@@ -46,6 +47,10 @@ class Parameters:
         self.exp_id = 0
         self.seed = 456  # 42
         self.batch_size = 4
+        self.num_workers = 8
+        self.prefetch_factor = 32
+        self.compile_model = False
+
 
         # Models
         self.model = 'grape'  # 'dgm_gcn', 'dgm_gat', 'gcn', 'gat', 'mlp' 'hi-patch'
