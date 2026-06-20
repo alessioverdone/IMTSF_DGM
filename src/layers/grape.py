@@ -163,7 +163,6 @@ class Grape(nn.Module):
         # Decoder: forward
         outputs = self.decoder(h, te_pred).squeeze(dim=-1).permute(0, 2, 1).unsqueeze(dim=0)  # [B, N, L_out, 2D] -> decoder -> [1, B, L_out, N]
 
-
         out_dict['pred_y'] = outputs
         return out_dict
 
@@ -178,22 +177,18 @@ class GrapeDgm(nn.Module):
         self.N = args.ndim
         self.batch_size = None
 
+        # Embedder
+        self.relu = nn.ReLU()
         self.te_scale = nn.Linear(1, 1)
         self.te_periodic = nn.Linear(1, args.hid_dim - 1)
         self.obs_enc = nn.Linear(1, args.hid_dim)
         self.nodevec = nn.Embedding(self.N, args.hid_dim)
-        self.relu = nn.ReLU()
-        self.decoder = nn.Sequential(
-            nn.Linear(args.hid_dim * 2, args.hid_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(args.hid_dim, args.hid_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(args.hid_dim, 1)
-        )
+
+
+        # Decoder
+        self.decoder = select_decoder(args)
         self.dgm = DGMmodule(args)
-
-        self.gcn = select_gnn(args)
-
+        self.gnn = select_gnn(args)
         self.pool = QueryPooling(args.ndim,
                                  args.hid_dim,
                                  num_heads=args.pool_num_heads)
@@ -243,7 +238,7 @@ class GrapeDgm(nn.Module):
         # GNN
         graph = build_graph_from_mask(X,
                                       mask.squeeze())  # Data object: graph.x:[(mask == 1.).sum(), D], graph.edge_index:[2,E]
-        graph.x = self.gcn(x=graph.x,
+        graph.x = self.gnn(x=graph.x,
                            edge_index=graph.edge_index,
                            batch=graph.batch)
 
@@ -254,14 +249,17 @@ class GrapeDgm(nn.Module):
         h, l_probs = self.dgm(h)  #TODO: usare modo migliore per compressare T dim (B,N,T,F).mean(2) = 32, 41, 32
         out_dict['l_probs'] = l_probs
 
-        # Decoder
+        # Decoder: adapt to time_steps_to_predict
         L_pred = time_steps_to_predict.shape[-1]  # 40
         h = h.unsqueeze(dim=-2).repeat(1, 1, L_pred, 1)  # # [B, N, L_out, D]
         time_steps_to_predict = time_steps_to_predict.view(B, 1, L_pred, 1).repeat(1, N, 1,
                                                                                    1)  # [B, L_out] -> [B, N, L_out, 1]
+
+        # Decoder: embeddings
         te_pred = self.LearnableTE(time_steps_to_predict)  # [B, N, L_out, 1] -> [B, N, L_out, D]
-        h = torch.cat([h, te_pred], dim=-1)  # [B, N, L_out, D] -> [B, N, L_out, 2D]
-        outputs = self.decoder(h).squeeze(dim=-1).permute(0, 2, 1).unsqueeze(
-            dim=0)  # [B, N, L_out, 2D] -> decoder -> [1, B, L_out, N]
+
+        # Decoder: forward
+        outputs = self.decoder(h, te_pred).squeeze(dim=-1).permute(0, 2, 1).unsqueeze(dim=0)  # [B, N, L_out, 2D] -> decoder -> [1, B, L_out, N]
+
         out_dict['pred_y'] = outputs
         return out_dict

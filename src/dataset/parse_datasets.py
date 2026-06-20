@@ -26,11 +26,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
 																train_size= 0.8,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = True)
 		train_data, val_data = model_selection.train_test_split(seen_data,
 																train_size= 0.75,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = False)
 		print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
 		test_record_ids = [record_id for record_id, tt, vals, mask in test_data]
@@ -125,11 +125,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
 																train_size= 0.8,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = True)
 		train_data, val_data = model_selection.train_test_split(seen_data,
 																train_size= 0.75,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = False)
 		# train_data = train_data[:100]
 
@@ -226,11 +226,11 @@ def parse_datasets(args, patch_ts=False, length_stat=False):
 		# Shuffle and split
 		seen_data, test_data = model_selection.train_test_split(total_dataset,
 																train_size= 0.8,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = True)
 		train_data, val_data = model_selection.train_test_split(seen_data,
 																train_size= 0.75,
-																random_state = 42,
+																random_state = args.seed,
 																shuffle = False)
 		print("Dataset n_samples:", len(total_dataset), len(train_data), len(val_data), len(test_data))
 		test_record_ids = [record_id for record_id, tt, vals, mask in test_data]

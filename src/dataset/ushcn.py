@@ -260,7 +260,7 @@ def check_data_integrity(split_dict: Dict):
 		# print('Sample with all zeros!')
 		non_corrupted_id = batch_id_set - corrupted_id_set
 		for data_type in split_dict:
-			new_split_dict[data_type] = split_dict[data_type][[list(non_corrupted_id)]]
+			new_split_dict[data_type] = split_dict[data_type][list(non_corrupted_id)]
 
 		split_dict = new_split_dict.copy()
 		# return split_dict  # ricordati che qui puoi lasciare cosi e ottieni batch piu piccole (però forse in evaluation.py, r:43,47 devi mettere mean

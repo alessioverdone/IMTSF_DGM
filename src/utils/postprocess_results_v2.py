@@ -191,6 +191,9 @@ def print_top_n_by_dataset(csv_path: str | None, n: int = 5,
     print(f"\n{'='*80}\n")
 
 
+
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     usage = 'ide'  # ['console', 'ide']
@@ -206,10 +209,11 @@ if __name__ == "__main__":
     else:
         # ── Set your root folder here ──
         root = '/home/user/Scrivania/PhD/DGM/docs/logs esperimenti/raw_logs'
-        csv_ = os.path.join(root, 'all_logs.csv')
-        xls_ = os.path.join(root, 'all_logs.xlsx')
+        csv_ = os.path.join(root, 'all_logs_v2.csv')
+        xls_ = os.path.join(root, 'all_logs_v2.xlsx')
 
+        # Cumulate results of different runs in a single .csv and .xlsx file
         # convert_all_logs(root, csv_, xls_)
 
         # Print the top N best results per dataset
-        print_top_n_by_dataset(csv_, n=5)
+        print_top_n_by_dataset(csv_, n=10)

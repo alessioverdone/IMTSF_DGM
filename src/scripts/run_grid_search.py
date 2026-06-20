@@ -58,16 +58,16 @@ def run_single_combination(combo: dict,
 
 def main():
     search_space = {
-        'dataset_name': ['physionet'],  # 'activity', 'ushcn', 'mimic', 'physionet'
+        'dataset_name': ['activity'],  # 'activity', 'ushcn', 'mimic', 'physionet'
         'dropout': [0.0],
         'lr': [1e-3],
-        'batch_size': [4],
+        'batch_size': [32],
         'gnn_name': ['GAT'],
-        'hid_dim': [64, 32],
+        'hid_dim': [32],
         'gnn_layers': [2, 1],
         'pool_num_heads': [16, 8, 4],
         'inner_mode': [4, 3, 2, 1],
-        'decoder_name' : ['crossAttn', 'filmSwiglu', 'simple']  #  'INR', 'film', 'gated', 'gru',
+        'decoder_name' : ['simple', ]  #  'INR', 'film', 'gated', 'gru', 'filmSwiglu', 'simple', 'crossAttn'
     }
 
 

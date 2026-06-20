@@ -212,3 +212,5 @@ data/
 registry/
 src/data/
 CLAUDE.md
+src/utils/plots/
+src/utils/best_results.csv

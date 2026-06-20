@@ -15,7 +15,7 @@ class Parameters:
         project_dir = Path(__file__).resolve().parents[1]
 
         # Path
-        self.dataset_name = 'ushcn'  #  ['physionet', 'activity', 'mimic','ushcn']
+        self.dataset_name = 'physionet'  #  ['physionet', 'activity', 'mimic','ushcn']
         self.data_dir = os.path.join(project_dir, 'data')
         self.registry_dir = os.path.join(project_dir, 'registry')
         self.logs_dir = os.path.join(self.registry_dir, 'logs')
@@ -31,7 +31,7 @@ class Parameters:
         self.log_every_n_steps = 300
         self.max_epochs = 500
         self.enable_progress_bar = True
-        self.check_val_every_n_epoch = 3
+        self.check_val_every_n_epoch = 1
         self.dropout = 0.0
         self.lr = 1e-3
         self.lr_patience = 2
@@ -47,7 +47,7 @@ class Parameters:
         self.exp_id = 0
         self.seed = 456  # 42
         self.batch_size = 4
-        self.num_workers = 8
+        self.num_workers = 12
         self.prefetch_factor = 32
         self.compile_model = False
 

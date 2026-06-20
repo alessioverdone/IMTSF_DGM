@@ -7,7 +7,7 @@ from src.layers.dgm import DGM_module
 from src.layers.hipatch import Hi_Patch
 from src.dataset.parse_datasets import parse_datasets
 from src.layers.moe import MixtureOfExpertsDGM
-from src.layers.grape import Grape
+from src.layers.grape import Grape, GrapeDgm
 
 
 def get_model(hparams):
@@ -26,6 +26,7 @@ def get_model(hparams):
         model = Hi_Patch(hparams)
     elif hparams.model == 'grape':
         model = Grape(hparams)
+        # model = GrapeDgm(hparams)
     else:
         raise Exception('Error in select the model!')
 
@@ -67,7 +68,6 @@ def set_params_wrt_dataset(run_params, dataModuleInstance):
         run_params.conv_layers[0][0] = run_params.hid_dim
         run_params.pre_fc[0] = run_params.hid_dim
         run_params.pre_fc[-1] = run_params.hid_dim
-
 
     else:
         raise ValueError('Define model name correctly!')

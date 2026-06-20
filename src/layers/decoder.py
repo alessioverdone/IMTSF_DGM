@@ -134,7 +134,7 @@ class FiLMSwiGLUDecoder(nn.Module):
         x = self.dropout(x) + residual
 
         # --- Head ---
-        y = self.head(x).squeeze(-1)  # [B, N, L_out]
+        y = self.head(x)  # [B, N, L_out]
         return y
 
 
@@ -249,7 +249,7 @@ class CrossAttentionDecoder(nn.Module):
 
         # Head
         y = self.head(x).squeeze(-1)  # [BN, L_out]
-        return y.reshape(B, N, L_out)
+        return y.reshape(B, N, L_out).unsqueeze(-1)
 
 
 class INRDecoder(nn.Module):
